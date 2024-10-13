@@ -110,11 +110,11 @@ from sklearn.preprocessing import MinMaxScaler, QuantileTransformer
 from transformers import AutoTokenizer, AutoModel, logging
 logging.set_verbosity_error()
 # biobert_path = '../pretrained_models/bio_clinical_bert/biobert_pretrain_output_all_notes_150000/'
-biobert_path = '/cis/home/charr165/vscode_projects/HAIM/pretrained_bert_tf/bert_pretrain_output_all_notes_150000'
-biobert_tokenizer = AutoTokenizer.from_pretrained(biobert_path)
-biobert_model = AutoModel.from_pretrained(biobert_path)
-# biobert_tokenizer = AutoTokenizer.from_pretrained("emilyalsentzer/Bio_ClinicalBERT")
-# biobert_model = AutoModel.from_pretrained("emilyalsentzer/Bio_ClinicalBERT")
+# biobert_path = '/cis/home/charr165/vscode_projects/HAIM/pretrained_bert_tf/bert_pretrain_output_all_notes_150000'
+# biobert_tokenizer = AutoTokenizer.from_pretrained(biobert_path)
+# biobert_model = AutoModel.from_pretrained(biobert_path)
+biobert_tokenizer = AutoTokenizer.from_pretrained("emilyalsentzer/Bio_ClinicalBERT")
+biobert_model = AutoModel.from_pretrained("emilyalsentzer/Bio_ClinicalBERT")
 # os.environ["TOKENIZERS_PARALLELISM"] = "false"
 
 # Computer Vision
@@ -1162,25 +1162,27 @@ def get_events_list(dt_patient, event_type, verbose):
 
 
 # OBTAIN BIOBERT EMBEDDINGS OF TEXT STRING
-def get_biobert_embeddings(text):
-    # Inputs:
-    #   text -> Input text (str)
-    #
-    # Outputs:
-    #   embeddings -> Final Biobert embeddings with vector dimensionality = (1,768)
-    #   hidden_embeddings -> Last hidden layer in Biobert model with vector dimensionality = (token_size,768)
-  
-    # %% EXAMPLE OF USE
-    # embeddings, hidden_embeddings = get_biobert_embeddings(text)
-  
-    tokens_pt = biobert_tokenizer(text, return_tensors="pt")
+def get_biobert_embeddings(text, device):
+
+    # Move the BioBERT model to the specified device
+    biobert_model.to(device)
+
+    # Tokenize text and move tokens to the same device
+    tokens_pt = biobert_tokenizer(text, return_tensors="pt").to(device)
+
+    # Get outputs from BioBERT model
     outputs = biobert_model(**tokens_pt)
+
+    # Extract last hidden state and pooler output (both on the GPU)
     last_hidden_state = outputs.last_hidden_state
     pooler_output = outputs.pooler_output
-    hidden_embeddings = last_hidden_state.detach().numpy()
-    embeddings = pooler_output.detach().numpy()
+
+    # No conversion to numpy, stay as tensors
+    hidden_embeddings = last_hidden_state
+    embeddings = pooler_output
 
     return embeddings, hidden_embeddings
+
 
 
 

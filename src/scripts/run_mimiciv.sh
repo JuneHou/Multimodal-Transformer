@@ -1,16 +1,16 @@
 export CUDA_VISIBLE_DEVICES=3
 
-python -W ignore main_mimiciv.py  --num_train_epochs 8  --modeltype 'TS_CXR' \
+python -W ignore ./src/scripts/main_mimiciv.py  --num_train_epochs 8  --modeltype 'TS_CXR' \
                 --kernel_size 1 --train_batch_size 1 --eval_batch_size 8 --seed 42 \
                 --gradient_accumulation_steps 16  --num_update_bert_epochs 2 --bertcount 3 \
                 --ts_learning_rate 0.0004 --txt_learning_rate 0.00002 \
                 --notes_order 'Last' --num_of_notes 5 --max_length 1024 --layers 3\
-                --output_dir "../run/TS_CXR" \
+                --output_dir "/data/wang/junh/results/Fuse_moe/" \
                 --embed_dim 128 \
                 --num_modalities 2 \
                 --model_name "bioLongformer"\
-                --task 'ihm-48-cxr-notes-ecg'\
-                --file_path '../Data/ihm'\
+                --task 'ihm-48-cxr-notes-missingInd'\
+                --file_path '/data/wang/junh/datasets/multimodal/preprocessing'\
                 --num_labels 2 \
                 --num_heads 8\
                 --embed_time 64\

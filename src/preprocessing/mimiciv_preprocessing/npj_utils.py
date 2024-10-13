@@ -7,6 +7,8 @@ from sklearn import metrics
 from sklearn.metrics import accuracy_score, balanced_accuracy_score, \
     confusion_matrix, roc_auc_score, f1_score, average_precision_score
 
+import warnings
+warnings.filterwarnings("ignore", category=RuntimeWarning)
 
 max_notes = 5
 max_len = 128
@@ -99,25 +101,26 @@ def calc_ts_embeddings(stays_list):
 
     for row_index, stay in tqdm(enumerate(stays_list), total=len(stays_list), desc='Calculating Time Series Embeddings'):
         curr_ts = stay['irg_ts']
-
-        for i, event in enumerate(event_list):
-            series = curr_ts[:max_len, i]  # assuming this is a numpy array
-
+        
+        for i, event in enumerate(event_list[:curr_ts.shape[1]]):
+            series = curr_ts[:max_len, i]
+            
             if len(series) > 1:
-                # Use numpy to perform calculations efficiently
-                max_val = np.max(series)
-                min_val = np.min(series)
-                mean_val = np.mean(series)
-                var_val = np.var(series)
-                series_diff = np.diff(series)
-                meandiff_val = np.mean(series_diff)
-                meanabsdiff_val = np.mean(np.abs(series_diff))
-                maxdiff_val = np.max(np.abs(series_diff))
-                sumabsdiff_val = np.sum(np.abs(series_diff))
-                diff_val = series[-1] - series[0]
-                peaks, _ = find_peaks(series)
-                npeaks_val = len(peaks)
-                trend_val = np.polyfit(np.arange(len(series)), series, 1)[0] if len(series) > 1 else 0
+                # Suppress warnings for invalid values and divide by zero
+                with np.errstate(invalid='ignore', divide='ignore'):
+                    max_val = np.max(series)
+                    min_val = np.min(series)
+                    mean_val = np.mean(series)
+                    var_val = np.var(series)
+                    series_diff = np.diff(series)
+                    meandiff_val = np.mean(series_diff)
+                    meanabsdiff_val = np.mean(np.abs(series_diff))
+                    maxdiff_val = np.max(np.abs(series_diff))
+                    sumabsdiff_val = np.sum(np.abs(series_diff))
+                    diff_val = series[-1] - series[0]
+                    peaks, _ = find_peaks(series)
+                    npeaks_val = len(peaks)
+                    trend_val = np.polyfit(np.arange(len(series)), series, 1)[0] if len(series) > 1 else 0
 
                 # Assign the calculations to the correct place in the DataFrame
                 for metric, value in zip(['_max', '_min', '_mean', '_variance', '_meandiff', '_meanabsdiff', '_maxdiff', '_sumabsdiff', '_diff', '_npeaks', '_trend'],

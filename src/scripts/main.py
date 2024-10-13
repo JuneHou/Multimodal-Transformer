@@ -17,6 +17,9 @@ from utils.util import *
 from accelerate import Accelerator
 from core.interp import *
 
+import sys
+sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+sys.path.append('../src')
 
 def main():
     args = parse_args()
