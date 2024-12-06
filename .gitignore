@@ -143,3 +143,6 @@ Checkpoints/
 mimic3benchmark/
 mimic3models/
 mimic3-benchmarks/
+
+# mine
+*.json

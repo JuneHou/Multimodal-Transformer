@@ -173,8 +173,17 @@ class MoE(nn.Module):
             self.w_gate = [nn.Parameter(torch.zeros(self.input_size//self.num_modalities, self.num_experts//self.num_modalities), requires_grad=True) for _ in range(self.num_modalities)]
             self.w_noise = [nn.Parameter(torch.zeros(self.input_size//self.num_modalities, self.num_experts//self.num_modalities), requires_grad=True) for _ in range(self.num_modalities)]
         elif self.router_type == 'permod':
-            self.w_gate = [nn.Parameter(torch.zeros(self.input_size//self.num_modalities, self.num_experts), requires_grad=True) for _ in range(self.num_modalities)]
-            self.w_noise = [nn.Parameter(torch.zeros(self.input_size//self.num_modalities, self.num_experts), requires_grad=True) for _ in range(self.num_modalities)]
+            self.w_gate = nn.ParameterList()
+            # Append each parameter to the list
+            for _ in range(self.num_modalities):
+                param = nn.Parameter(torch.zeros(self.input_size//self.num_modalities, self.num_experts))
+                self.w_gate.append(param)
+            self.w_noise = nn.ParameterList()
+            # Append each parameter to the list
+            for _ in range(self.num_modalities):
+                param = nn.Parameter(torch.zeros(self.input_size//self.num_modalities, self.num_experts))
+                self.w_noise.append(param)
+        # Joint
         else:
             self.w_gate = nn.Parameter(torch.zeros(self.input_size, self.num_experts), requires_grad=True)
             self.w_noise = nn.Parameter(torch.zeros(self.input_size, self.num_experts), requires_grad=True)
@@ -272,6 +281,8 @@ class MoE(nn.Module):
             clean_logits = -torch.cdist(x, torch.t(w_gate))
         elif self.gating == 'gaussian':
             clean_logits = -torch.pow(torch.cdist(x, torch.t(w_gate)), 2)
+        torch.set_printoptions(precision=10)
+        #print(f"w_gate[{idx}] after logits computation: {w_gate}")
 
         if self.noisy_gating:
             raw_noise_stddev = x @ w_noise

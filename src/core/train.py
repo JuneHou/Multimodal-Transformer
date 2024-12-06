@@ -2,6 +2,8 @@ from utils.checkpoint import *
 from utils.util import *
 from tqdm import tqdm
 from sklearn.metrics import  roc_auc_score, precision_recall_curve,  auc, f1_score
+from collections import defaultdict
+import pandas as pd
 import warnings 
 
 
@@ -48,7 +50,11 @@ def trainer_irg(model,args,accelerator,train_dataloader,dev_dataloader,test_data
     count=0
     global_step=0
     best_evals={}
+
+    # Check if the file already exists and load previous gradients
+    output_file_base = '/data/wang/junh/githubs/Multimodal-Transformer/' + args.modeltype
     for epoch in tqdm(range(args.num_train_epochs)):
+        cumulative_gradients = defaultdict(lambda: None)  # Initialize with None
         model.train()
         if "Text" in args.modeltype:
             if args.num_update_bert_epochs<args.num_train_epochs and (epoch)%args.num_update_bert_epochs==0 and count<args.bertcount:
@@ -98,17 +104,17 @@ def trainer_irg(model,args,accelerator,train_dataloader,dev_dataloader,test_data
                         cxr_time=cxr_time, \
                         cxr_time_mask=cxr_time_mask,labels=label,reg_ts=reg_ts,\
                         cxr_missing=cxr_missing, text_missing=text_missing)
-            elif args.modeltype == 'TS_CXR_Text':
+            elif args.modeltype == 'TS_CXR_ECG':
                 loss=model(x_ts=ts_input_sequences, \
                         x_ts_mask=ts_mask_sequences,\
                         ts_tt_list=ts_tt,\
                         input_ids_sequences=input_ids_sequences,\
                         attn_mask_sequences=attn_mask_sequences, text_emb=text_emb, note_time_list=note_time,\
                         note_time_mask_list=note_time_mask,\
-                        cxr_feats=cxr_feats,\
-                        cxr_time=cxr_time, \
-                        cxr_time_mask=cxr_time_mask,labels=label,reg_ts=reg_ts,\
-                        cxr_missing=cxr_missing, text_missing=text_missing)
+                        ecg_feats=ecg_feats,\
+                        ecg_time=ecg_time, \
+                        ecg_time_mask=ecg_time_mask,labels=label,reg_ts=reg_ts,\
+                        ecg_missing=ecg_missing, text_missing=text_missing)
             elif args.modeltype == "TS_CXR_Text_ECG":
                 loss=model(x_ts=ts_input_sequences, \
                         x_ts_mask=ts_mask_sequences,\
@@ -129,27 +135,54 @@ def trainer_irg(model,args,accelerator,train_dataloader,dev_dataloader,test_data
                         ts_tt_list=ts_tt,\
                         labels=label,reg_ts=reg_ts)
             elif args.modeltype == "Text":
+                #loss=model(input_ids_sequences=input_ids_sequences,\
+                #        attn_mask_sequences=attn_mask_sequences, labels=label)
                 loss=model(input_ids_sequences=input_ids_sequences,\
-                        attn_mask_sequences=attn_mask_sequences, text_emb=text_emb, labels=label)
+                        attn_mask_sequences=attn_mask_sequences, text_emb=text_emb,\
+                        note_time_list=note_time, note_time_mask_list=note_time_mask,\
+                        text_missing=text_missing, labels=label)
+            elif args.modeltype == "CXR":
+                loss=model(cxr_feats=cxr_feats,\
+                        cxr_time=cxr_time, \
+                        cxr_time_mask=cxr_time_mask, cxr_missing=cxr_missing, \
+                        labels=label)
 
             if loss is None:
                 # add warning
                 warnings.warn("loss is None!")
                 continue
-            loss = loss / args.gradient_accumulation_steps
+            loss = loss.mean() / args.gradient_accumulation_steps
             accelerator.backward(loss)
+
 
             # Print loss and 
 
 
-            if (step+1) % args.gradient_accumulation_steps == 0 or step == len(train_dataloader) - 1:
+            if (step + 1) % args.gradient_accumulation_steps == 0 or step == len(train_dataloader) - 1:
                 optimizer.step()
-                if scheduler!=None:
+
+                # # Collect gradients by modality
+                # for name, param in model.named_parameters():
+                #     if param.requires_grad and "w_gate" in name:
+                #         # Initialize cumulative gradient for the parameter
+                #         if name not in cumulative_gradients:
+                #             cumulative_gradients[name] = np.zeros_like(param.grad.detach().cpu().numpy())
+                        
+                #         # Add current gradient to cumulative gradient
+                #         cumulative_gradients[name] += param.grad.detach().cpu().numpy()
+
+                if scheduler is not None:
                     scheduler.step()
                 model.zero_grad()
 
             if writer!=None:
                 writer.add_scalar('training/train_loss',loss,global_step)
+        # # Save cumulative gradients for this epoch
+        # output_file = f"{output_file_base}_{epoch + 1}.json"  # Append epoch number
+        # with open(output_file, 'w') as f:
+        #     json.dump({k: v.tolist() for k, v in cumulative_gradients.items()}, f, indent=4)
+
+        # print(f"Saved gradients for epoch {epoch + 1} to {output_file}")
 
         if none_count>0:
             print("none_count",none_count)
@@ -228,8 +261,16 @@ def evaluate_irg(args, device, data_loader, model, mode=None):
                         ts_tt_list=ts_tt,\
                         reg_ts=reg_ts)
             elif args.modeltype == "Text":
+                #logits=model(input_ids_sequences=input_ids_sequences,\
+                #        attn_mask_sequences=attn_mask_sequences)
                 logits=model(input_ids_sequences=input_ids_sequences,\
-                        attn_mask_sequences=attn_mask_sequences, text_emb=text_emb)
+                        attn_mask_sequences=attn_mask_sequences, text_emb=text_emb,\
+                        note_time_list=note_time, note_time_mask_list=note_time_mask,\
+                        text_missing=text_missing)
+            elif args.modeltype == "CXR":
+                logits=model(cxr_feats=cxr_feats,\
+                        cxr_time=cxr_time, \
+                        cxr_time_mask=cxr_time_mask, cxr_missing=cxr_missing)
             if logits is None:
                 warnings.warn("logits is None!")
                 continue
@@ -240,8 +281,37 @@ def evaluate_irg(args, device, data_loader, model, mode=None):
             label_ids = label.cpu().numpy()
             eval_logits += logits.tolist()
             eval_example += label_ids.tolist()
+        # Optional: Aggregate attention weights post-evaluation of the batch
+        # Can also be done only at the end of an epoch or the complete evaluation
+        # attention_weights = model.aggregate_attention_weights()
+        # all_attention_weights.append(attention_weights)
+        
     if none_count>0:
         print("none_count",none_count)
+    
+    if mode == "test":
+        all_logits = np.array(eval_logits)
+        all_labels = np.array(eval_example)
+        predictions = np.where(all_logits > 0.5, 1, 0)
+
+        # Check if handling a binary classification or multi-label classification
+        if predictions.ndim == 1:
+            # Binary classification, predictions are already 1D
+            results_df = pd.DataFrame({
+                "Predicted": predictions,
+                "Ground_Truth": all_labels
+            })
+        else:
+            # Multi-label classification, convert each row to tuple or string
+            results_df = pd.DataFrame({
+                "Predicted": [tuple(row) for row in predictions],
+                "Ground_Truth": [tuple(row) for row in all_labels]
+            })
+
+        # Save to a CSV file
+        output_file = f"{args.output_dir}{args.modeltype}_test_predictions.csv"
+        results_df.to_csv(output_file, index=False)
+        print(f"Saved test predictions to {output_file}")
 
     eval_vals={}
     all_logits = np.array(eval_logits)

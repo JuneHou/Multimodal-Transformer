@@ -167,8 +167,8 @@ def loadBert(args,device):
             tokenizer = BertTokenizer.from_pretrained('bert-base-uncased')
             BioBert = BertModel.from_pretrained("bert-base-uncased")
         elif args.model_name== "bioLongformer":
-            tokenizer = AutoTokenizer.from_pretrained("yikuan8/Clinical-Longformer")
-            BioBert= AutoModel.from_pretrained("yikuan8/Clinical-Longformer")
+            tokenizer = AutoTokenizer.from_pretrained("/data/wang/junh/datasets/Models/Clinical-Longformer_tokenizer")
+            BioBert= AutoModel.from_pretrained("/data/wang/junh/datasets/Models/Clinical-Longformer_model")
 
         else:
             raise ValueError("model_name should be BioBert,bioRoberta,bioLongformer or Bert")

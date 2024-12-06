@@ -115,6 +115,8 @@ logging.set_verbosity_error()
 # biobert_model = AutoModel.from_pretrained(biobert_path)
 biobert_tokenizer = AutoTokenizer.from_pretrained("emilyalsentzer/Bio_ClinicalBERT")
 biobert_model = AutoModel.from_pretrained("emilyalsentzer/Bio_ClinicalBERT")
+longformer_tokenizer = AutoTokenizer.from_pretrained("yikuan8/Clinical-Longformer")
+longformer_model = AutoModel.from_pretrained("yikuan8/Clinical-Longformer")
 # os.environ["TOKENIZERS_PARALLELISM"] = "false"
 
 # Computer Vision
@@ -1162,16 +1164,24 @@ def get_events_list(dt_patient, event_type, verbose):
 
 
 # OBTAIN BIOBERT EMBEDDINGS OF TEXT STRING
-def get_biobert_embeddings(text, device):
+def get_biobert_embeddings(text, device, modelname):
 
     # Move the BioBERT model to the specified device
     biobert_model.to(device)
+    longformer_model.to(device)
 
-    # Tokenize text and move tokens to the same device
-    tokens_pt = biobert_tokenizer(text, return_tensors="pt").to(device)
+    if modelname == 'biobert':
+        # Tokenize text and move tokens to the same device
+        tokens_pt = biobert_tokenizer(text, return_tensors="pt", padding="max_length", max_length=512,truncation=True).to(device)
 
-    # Get outputs from BioBERT model
-    outputs = biobert_model(**tokens_pt)
+        # Get outputs from BioBERT model
+        outputs = biobert_model(**tokens_pt)
+    elif modelname == 'longformer':
+        # Tokenize text and move tokens to the same device
+        tokens_pt = longformer_tokenizer(text, return_tensors="pt", max_length=1024, padding="max_length", truncation=True).to(device)
+
+        # Get outputs from BioBERT model
+        outputs = longformer_model(**tokens_pt)
 
     # Extract last hidden state and pooler output (both on the GPU)
     last_hidden_state = outputs.last_hidden_state

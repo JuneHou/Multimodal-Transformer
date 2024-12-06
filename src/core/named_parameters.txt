@@ -1,0 +1,133 @@
+<bound method Module.named_parameters of MULTCrossModel(
+  (token_type_embeddings): Embedding(2, 128)
+  (periodic): Linear(in_features=1, out_features=63, bias=True)
+  (linear): Linear(in_features=1, out_features=1, bias=True)
+  (time_attn_ts): multiTimeAttention(
+    (linears): ModuleList(
+      (0-1): 2 x Linear(in_features=64, out_features=64, bias=True)
+      (2): Linear(in_features=480, out_features=128, bias=True)
+    )
+  )
+  (proj_ts): Conv1d(60, 128, kernel_size=(1,), stride=(1,), bias=False)
+  (moe): gateMLP(
+    (gate): Sequential(
+      (0): Dropout(p=0.1, inplace=False)
+      (1): Linear(in_features=256, out_features=128, bias=True)
+      (2): ReLU()
+      (3): Linear(in_features=128, out_features=1, bias=True)
+      (4): Sigmoid()
+    )
+  )
+  (bertrep): BertForRepresentation(
+    (bert): LongformerModel(
+      (embeddings): LongformerEmbeddings(
+        (word_embeddings): Embedding(50265, 768, padding_idx=1)
+        (position_embeddings): Embedding(4098, 768, padding_idx=1)
+        (token_type_embeddings): Embedding(1, 768)
+        (LayerNorm): LayerNorm((768,), eps=1e-05, elementwise_affine=True)
+        (dropout): Dropout(p=0.1, inplace=False)
+      )
+      (encoder): LongformerEncoder(
+        (layer): ModuleList(
+          (0-11): 12 x LongformerLayer(
+            (attention): LongformerAttention(
+              (self): LongformerSelfAttention(
+                (query): Linear(in_features=768, out_features=768, bias=True)
+                (key): Linear(in_features=768, out_features=768, bias=True)
+                (value): Linear(in_features=768, out_features=768, bias=True)
+                (query_global): Linear(in_features=768, out_features=768, bias=True)
+                (key_global): Linear(in_features=768, out_features=768, bias=True)
+                (value_global): Linear(in_features=768, out_features=768, bias=True)
+              )
+              (output): LongformerSelfOutput(
+                (dense): Linear(in_features=768, out_features=768, bias=True)
+                (LayerNorm): LayerNorm((768,), eps=1e-05, elementwise_affine=True)
+                (dropout): Dropout(p=0.1, inplace=False)
+              )
+            )
+            (intermediate): LongformerIntermediate(
+              (dense): Linear(in_features=768, out_features=3072, bias=True)
+            )
+            (output): LongformerOutput(
+              (dense): Linear(in_features=3072, out_features=768, bias=True)
+              (LayerNorm): LayerNorm((768,), eps=1e-05, elementwise_affine=True)
+              (dropout): Dropout(p=0.1, inplace=False)
+            )
+          )
+        )
+      )
+      (pooler): LongformerPooler(
+        (dense): Linear(in_features=768, out_features=768, bias=True)
+        (activation): Tanh()
+      )
+    )
+    (dropout): Dropout(p=0.1, inplace=False)
+  )
+  (time_attn_text): multiTimeAttention(
+    (linears): ModuleList(
+      (0-1): 2 x Linear(in_features=64, out_features=64, bias=True)
+      (2): Linear(in_features=6144, out_features=128, bias=True)
+    )
+  )
+  (trans_self_cross_ts_txt): TransformerCrossEncoder(
+    (embed_positions_q_1): Embedding(48, 128, padding_idx=0)
+    (embed_positions_q): ModuleList(
+      (0-1): 2 x Embedding(48, 128, padding_idx=0)
+    )
+    (layers): ModuleList(
+      (0-2): 3 x TransformerCrossEncoderLayer(
+        (pre_self_attn_layer_norm): ModuleList(
+          (0-1): 2 x LayerNorm((128,), eps=1e-05, elementwise_affine=True)
+        )
+        (self_attns): ModuleList(
+          (0-1): 2 x MultiheadAttention(
+            (out_proj): Linear(in_features=128, out_features=128, bias=True)
+          )
+        )
+        (post_self_attn_layer_norm): ModuleList(
+          (0-1): 2 x LayerNorm((128,), eps=1e-05, elementwise_affine=True)
+        )
+        (pre_encoder_attn_layer_norm): ModuleList(
+          (0-1): 2 x LayerNorm((128,), eps=1e-05, elementwise_affine=True)
+        )
+        (cross_attn_1): MultiheadAttention(
+          (out_proj): Linear(in_features=128, out_features=128, bias=True)
+        )
+        (cross_attn_2): MultiheadAttention(
+          (out_proj): Linear(in_features=128, out_features=128, bias=True)
+        )
+        (post_encoder_attn_layer_norm): ModuleList(
+          (0-1): 2 x LayerNorm((128,), eps=1e-05, elementwise_affine=True)
+        )
+        (pre_ffn_layer_norm): ModuleList(
+          (0-1): 2 x LayerNorm((128,), eps=1e-05, elementwise_affine=True)
+        )
+        (fc1): ModuleList(
+          (0-1): 2 x Linear(in_features=128, out_features=512, bias=True)
+        )
+        (fc2): ModuleList(
+          (0-1): 2 x Linear(in_features=512, out_features=128, bias=True)
+        )
+        (moe): MoE(
+          (experts): ModuleList(
+            (0-15): 16 x MLP(
+              (fc1): Linear(in_features=6144, out_features=512, bias=True)
+              (fc2): Linear(in_features=512, out_features=12288, bias=True)
+              (dropout): Dropout(p=0.1, inplace=False)
+              (activation): GELUActivation()
+              (log_soft): LogSoftmax(dim=1)
+            )
+          )
+          (softplus): Softplus(beta=1.0, threshold=20.0)
+          (softmax): Softmax(dim=1)
+        )
+      )
+    )
+    (layer_norm): ModuleList(
+      (0-1): 2 x LayerNorm((128,), eps=1e-05, elementwise_affine=True)
+    )
+  )
+  (proj1): Linear(in_features=256, out_features=256, bias=True)
+  (proj2): Linear(in_features=256, out_features=256, bias=True)
+  (out_layer): Linear(in_features=256, out_features=2, bias=True)
+  (loss_fct1): CrossEntropyLoss()

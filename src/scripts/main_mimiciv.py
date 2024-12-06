@@ -75,7 +75,10 @@ def main():
 
     if args.modeltype == 'Text':
         # pure text
-        model= TextModel(args=args,device=device,orig_d_txt=768,Biobert=BioBert)
+        #model= TextModel(args=args,device=device,orig_d_txt=768,Biobert=BioBert)
+        model= TextMoE(args=args,device=device,orig_d_txt=768,text_seq_num=args.num_of_notes,Biobert=BioBert)
+    elif args.modeltype == 'CXR':
+        model = CXRMoE(args=args,device=device,orig_d_cxr=1024)
     elif args.modeltype == 'TS':
         # pure time series
         model= TSMixed(args=args,device=device,orig_d_ts=30,orig_reg_d_ts=60, ts_seq_num=args.tt_max)
@@ -94,6 +97,8 @@ def main():
                 {'params': [p for n, p in model.named_parameters() if 'bert' not in n]},
                 {'params': [p for n, p in model.named_parameters() if 'bert' in n], 'lr': args.txt_learning_rate}
             ], lr=args.ts_learning_rate)
+    elif "CXR" in args.modeltype:
+        optimizer = torch.optim.Adam(model.parameters(), lr=args.ts_learning_rate)
     else:
         raise ValueError("Unknown modeltype in optimizer.")
 
@@ -106,6 +111,9 @@ def main():
     eval_test(args,model,test_data_loader, device)
     print(f"New maximum memory allocated on GPU: {torch.cuda.max_memory_allocated(device)} bytes")
     print(f'Results saved in:\n{args.ck_file_path}')
+
+    # attention_weights = model.aggregate_attention_weights()
+    # pickle.dump(attention_weights, open(os.path.join(args.ck_file_path, "final_attention_weights.pkl"), "wb"))
 
 
 if __name__ == "__main__":
