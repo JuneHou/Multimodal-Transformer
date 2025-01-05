@@ -8,7 +8,7 @@ from torch.nn.utils.rnn import pad_sequence
 import pdb
 
 
-def data_perpare(args,mode,tokenizer,data=None):
+def data_perpare(args,mode,tokenizer,pid_label,data=None):
     """
     Prepare the data for training or evaluation.
 
@@ -23,7 +23,7 @@ def data_perpare(args,mode,tokenizer,data=None):
         sampler (object): The sampler object.
         dataloader (object): The dataloader object.
     """
-    dataset=TSNote_Irg(args, mode, tokenizer, data=data)
+    dataset=TSNote_Irg(args, mode, tokenizer, pid_label, data=data)
 
     if mode=='train':
         #sampler = RandomSampler(dataset)
@@ -97,14 +97,15 @@ class TSNote_Irg(Dataset):
         __len__(self): Returns the length of the dataset.
     """
     
-    def __init__(self,args,mode,tokenizer,data=None):
+    def __init__(self,args,mode,tokenizer,pid_label,data=None):
         self.tokenizer = tokenizer
         self.max_len = args.max_length
         print(args.file_path)
+        self.pid_label=pid_label
         if data != None:
             self.data=data
         else:
-            self.data = load_data(file_path=args.file_path,mode=mode,debug=args.debug,task=args.task)
+            self.data = load_data(file_path=args.file_path,mode=mode,pid_label=self.pid_label,debug=args.debug,task=args.task)
         self.chunk=args.chunk
         if self.chunk:
             self.text_id_attn_data = load_data(file_path=args.file_path,mode=mode,text=True,task=args.task)
@@ -272,16 +273,12 @@ class TSNote_Irg(Dataset):
         # pdb.set_trace()
         if self.modeltype == 'TS_CXR':
             return {'ids': ids, 'idx': idx, 'ts': ts, 'ts_mask': ts_mask, 'ts_tt': ts_tt, 'reg_ts': reg_ts, "label": label, 'cxr_feats': cxr_feats, 'cxr_time': cxr_time_to_end, 'cxr_time_mask': cxr_time_mask}
-        elif self.modeltype == 'TS_ECG':
-            return {'ids': ids, 'idx': idx, 'ts': ts, 'ts_mask': ts_mask, 'ts_tt': ts_tt, 'reg_ts': reg_ts, "label": label, 'ecg_feats': ecg_feats, 'ecg_time': ecg_time_to_end, 'ecg_time_mask': ecg_time_mask}
         elif self.modeltype == 'TS':
             return {'ids': ids, 'idx': idx, 'ts': ts, 'ts_mask': ts_mask, 'ts_tt': ts_tt, 'reg_ts': reg_ts, "label": label}
         elif self.modeltype == 'Text':
             return {'ids': ids, 'idx': idx, 'input_ids': text_token, 'label': label, 'attention_mask': atten_mask, 'text_embeddings': text_emb, 'note_time': text_time_to_end, 'text_time_mask': text_time_mask}
         elif self.modeltype == 'CXR':
             return {'ids': ids, 'idx': idx, 'label': label, 'cxr_feats': cxr_feats, 'cxr_time': cxr_time_to_end, 'cxr_time_mask': cxr_time_mask}
-        elif self.modeltype == 'ECG':
-            return {'ids': ids, 'idx': idx, 'label': label, 'ecg_feats': ecg_feats, 'ecg_time': ecg_time_to_end, 'ecg_time_mask': ecg_time_mask}
         elif self.modeltype == 'TS_Text':
             return {'ids': ids, 'idx': idx,'ts': ts, 'ts_mask': ts_mask, 'ts_tt': ts_tt, 'reg_ts': reg_ts, "input_ids": text_token, "label":label, "attention_mask": atten_mask, "text_embeddings": text_emb, \
             'note_time':text_time_to_end, 'text_time_mask': text_time_mask}
@@ -292,14 +289,7 @@ class TSNote_Irg(Dataset):
         elif self.modeltype == 'TS_CXR_Text':
             return {'ids': ids, 'idx': idx, 'ts': ts, 'ts_mask': ts_mask, 'ts_tt': ts_tt, 'reg_ts': reg_ts, "input_ids": text_token, "label": label, "attention_mask": atten_mask, "text_embeddings": text_emb, \
             'note_time': text_time_to_end, 'text_time_mask': text_time_mask, 'text_missing': data_detail['text_missing'],
-             'cxr_feats': cxr_feats, 'cxr_time': cxr_time_to_end, 'cxr_time_mask': cxr_time_mask, 'cxr_missing': data_detail['cxr_missing']}
-        elif self.modeltype == 'TS_ECG_Text':
-            return {'ids': ids, 'idx': idx, 'ts': ts, 'ts_mask': ts_mask, 'ts_tt': ts_tt, 'reg_ts': reg_ts, "input_ids": text_token, "label": label, "attention_mask": atten_mask, "text_embeddings": text_emb, \
-                'note_time': text_time_to_end, 'text_time_mask': text_time_mask, 'text_missing': data_detail['text_missing'],
-                'ecg_feats': ecg_feats, 'ecg_time': ecg_time_to_end, 'ecg_time_mask': ecg_time_mask, 'ecg_missing': data_detail['ecg_missing']}
-        elif self.modeltype == 'TS_CXR_ECG':
-            return {'ids': ids, 'idx': idx, 'ts': ts, 'ts_mask': ts_mask, 'ts_tt': ts_tt, 'reg_ts': reg_ts, "label": label, 'cxr_feats': cxr_feats, 'cxr_time': cxr_time_to_end, 'cxr_time_mask': cxr_time_mask, \
-                'ecg_feats': ecg_feats, 'ecg_time': ecg_time_to_end, 'ecg_time_mask': ecg_time_mask}
+             'cxr_feats': cxr_feats, 'cxr_time': cxr_time_to_end, 'cxr_time_mask': cxr_time_mask, 'cxr_missing': data_detail['cxr_missing'], 'ecg_missing': data_detail['ecg_missing']}
         elif self.modeltype == 'TS_CXR_Text_ECG':
             return {'ids': ids, 'idx': idx, 'ts': ts, 'ts_mask': ts_mask, 'ts_tt': ts_tt, 'reg_ts': reg_ts, "input_ids": text_token, "label": label, "attention_mask": atten_mask, "text_embeddings": text_emb, \
             'note_time': text_time_to_end, 'text_time_mask': text_time_mask, 'text_missing': data_detail['text_missing'],
@@ -309,7 +299,7 @@ class TSNote_Irg(Dataset):
     def __len__(self):
         return len(self.data)
 
-def load_data(file_path, mode, debug=False, text=False, task='ihm'):
+def load_data(file_path, mode, pid_label, debug=False, text=False, task='ihm'):
     """
     Load data from a file.
 
@@ -323,7 +313,8 @@ def load_data(file_path, mode, debug=False, text=False, task='ihm'):
     Returns:
         data: The loaded data.
     """
-    dataPath = os.path.join(file_path, mode + '_' + task + '_stays.pkl')
+    # dataPath = os.path.join(file_path, mode + '_' + task + '_stays.pkl')
+    dataPath = os.path.join(file_path, mode + '_' + task + '_' + pid_label + '_stays.pkl')
     if os.path.isfile(dataPath):
         print('Using', dataPath)
         with open(dataPath, 'rb') as f:
@@ -347,15 +338,12 @@ def TextTSIrgcollate_fn(batch):
 
     if 'cxr_missing' in batch[0].keys():
         cxr_missing = torch.stack([torch.tensor(example["cxr_missing"]) for example in batch])
-    else:
-        cxr_missing = None
-    if 'text_missing' in batch[0].keys():
         text_missing = torch.stack([torch.tensor(example["text_missing"]) for example in batch])
-    else:
-        text_missing = None
     if 'ecg_missing' in batch[0].keys():
         ecg_missing = torch.stack([torch.tensor(example["ecg_missing"]) for example in batch])
     else:
+        cxr_missing = None
+        text_missing = None
         ecg_missing = None
 
     if 'ts' in batch[0].keys():

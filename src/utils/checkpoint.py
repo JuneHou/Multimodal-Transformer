@@ -8,126 +8,77 @@ import fnmatch
 import shutil
 
 
-def copy_file(dst, src=os.getcwd()):
-
-    pattern = "*.py"
-    copy_dirs = [src,src+"/model"]
-    pair_file_list = []
-    for path, subdirs, files in os.walk(src):
-        for name in files:
-            if fnmatch.fnmatch(name, pattern):
-                source_file = os.path.join(path, name)
-                target_file = os.path.join(path, name).replace(src,dst)
-                pair_file_list.append((source_file,target_file))
-
-
-    for source_file,target_file in pair_file_list:
-        if(os.path.dirname(source_file) in copy_dirs):
-            os.makedirs(os.path.dirname(target_file), exist_ok=True)
-            shutil.copy(source_file, target_file)
-
-def save_checkpoint(state, is_best, filename):
-    """Save checkpoint if a new best is achieved"""
-    if is_best:
-#         print ("=> Saving a new best")
-        torch.save(state, filename)  # save checkpoint
-    else:
-        print ("=> Validation Accuracy did not improve")
-
-def make_save_dir(args):
-
-    output_dir=args.output_dir+"/"+args.task+"/"+args.modeltype+"/"
-
+def construct_path(args, eval_score=None):
+    # Base directory for outputs
+    base_dir = os.path.join(args.output_dir, args.task, args.modeltype)
+    
+    # Additional specifics based on model type and settings
     if 'Bert' in args.modeltype:
-        output_dir+=args.model_name+"/"+args.notes_order+"/"+str(args.num_of_notes)+"/"
-        output_dir+=str(args.max_length)+"_" +str(args.txt_learning_rate)+"_"+ str(args.num_train_epochs)+\
-        "_"+str(args.embed_dim)+"_"+str(args.train_batch_size)+"_"+str(args.num_update_bert_epochs)+'/'
-
+        specific_dir = os.path.join(args.model_name, args.notes_order, str(args.num_of_notes), str(args.max_length))
+    elif 'TS' in args.modeltype and args.irregular_learn_emb_ts:
+        specific_dir = f"TS_{args.tt_max}/{args.TS_model}"
+    elif 'Text' in args.modeltype and args.irregular_learn_emb_text:
+        specific_dir = f"Text_{args.tt_max}/{args.model_name}/{args.max_length}"
+    elif 'CXR' in args.modeltype and args.irregular_learn_emb_cxr:
+        specific_dir = f"CXR_{args.tt_max}/{args.model_name}"
+    elif 'ECG' in args.modeltype and args.irregular_learn_emb_ecg:
+        specific_dir = f"ECG_{args.tt_max}/{args.model_name}"
     else:
-        if args.irregular_learn_emb_ts and "TS" in args.modeltype:
-            output_dir+=  "TS_"+str(args.tt_max)+"/"+args.TS_model+"/"
-        if args.irregular_learn_emb_text and 'Text' in args.modeltype:
-            output_dir+= "Text_"+str(args.tt_max)+"/"+args.model_name+"/"+str(args.max_length)+"/"
-
-        if args.num_modalities > 1:
-            if args.cross_method=="self_cross":
-                output_dir+='cross_attn'+str(args.cross_layers)+"/"
-            else:
-                output_dir+=args.cross_method+"/"
-                if args.cross_method == 'moe':
-                    output_dir += f"{args.gating_function}/"
-                    output_dir += f"{args.router_type}/"
-                    output_dir += f"top_{args.top_k}/"
-                    if args.router_type == 'disjoint':
-                        output_dir += f"disjoint_{args.disjoint_top_k}/"
-                if args.cross_method == 'hme':
-                    output_dir += f"{args.gating_function}/"
-                    output_dir += f"{args.num_of_experts}/"
-                    output_dir += f"top_{args.top_k}/"
-
-        if args.modeltype=="Text" or args.modeltype=="TS":
-            output_dir+='layer'+str(args.layers)+"/"
-
-        if args.TS_mixup:
-            output_dir+=args.mixup_level+"/"
-        
-        if args.irregular_learn_emb_ts:
-            output_dir+="irregular_TS_"+str(args.embed_time)+"/"
-        else:
-            output_dir+="regular_TS/"
-
-        if args.irregular_learn_emb_text:
-            output_dir+="irregular_Text_"+str(args.embed_time)+"/"
-        else:
-            output_dir+="regular_Text/"
-        if "Text" in args.modeltype:
-            if args.use_pt_text_embeddings:
-                output_dir += 'use_pt_text_embeddings/'
-            else:
-                output_dir += 'no_pt_text_embeddings/'
-            output_dir+=str(args.txt_learning_rate)+"_"+str(args.num_update_bert_epochs)+"_"+str(args.bertcount)+"_"
-        if "TS" in args.modeltype:
-            output_dir+=str(args.ts_learning_rate)+"_"
-
-        output_dir += str(args.num_train_epochs)+"_"+str(args.num_heads)+"_"+str(args.embed_dim)+"_"\
-        +str(args.kernel_size)+"_"+str(args.train_batch_size)+"_"+str(args.num_of_experts)+"_"+str(args.hidden_size)+'/'
-    args.ck_file_path=output_dir
-    print(args.ck_file_path)
-
-
-def check_point(all_val, model, all_logits,args,eval_score=None):
-    output_dir=args.ck_file_path
-
-    seed=args.seed
-
+        specific_dir = "general"
+    
+    # Combine into full directory path
+    full_dir = os.path.join(base_dir, specific_dir)
+    
+    # If using specific evaluation score for subdirectories
     if eval_score:
-        output_dir+= eval_score +'/'
-    os.makedirs(output_dir,  exist_ok=True)
+        full_dir = os.path.join(full_dir, eval_score)
 
-    if args.generate_data:
-        filename=output_dir+str(args.datagereate_seed)+"_"+str(seed)+'.pth.tar'
+    # Ensure directory exists
+    os.makedirs(full_dir, exist_ok=True)
+    
+    # Construct filename
+    args.ck_file_path=full_dir
+    print(args.ck_file_path)
+    
+    return full_dir
+
+def save_checkpoint(state, path):
+    torch.save(state, path)
+    print(f"Checkpoint saved at: {path}")
+
+def load_checkpoint(path):
+    if os.path.exists(path):
+        print(f"Loading checkpoint from {path}")
+        return torch.load(path, map_location=torch.device('cpu'))
     else:
-        filename=output_dir+str(seed)+'.pth.tar'
+        print(f"Checkpoint not found at {path}")
+        return None
 
-    if not os.path.exists(filename):
-        is_best =True
+def check_point(all_val, model, all_logits, args, eval_score=None):
+    checkpoint_dir = construct_path(args, eval_score)
+    checkpoint_path = os.path.join(checkpoint_dir, f"{args.seed}.pth.tar")
+    
+    should_save = False
+    if os.path.exists(checkpoint_path):
+        checkpoint = torch.load(checkpoint_path)
+        current_best_val = checkpoint['best_val'].get(eval_score, float('-inf'))
+        new_val = all_val.get(eval_score, float('inf'))
+        should_save = new_val > current_best_val
+        print(f"Check for best: Existing {eval_score} = {current_best_val}, New {eval_score} = {new_val}")
+    else:
+        print(f"No checkpoint exists. Saving initial checkpoint as baseline.")
+        should_save = True
+
+    if should_save:
         save_checkpoint({
-        'network':model.state_dict(),
-        'logits':all_logits,
-        'best_val': all_val,
-        'args': args}, is_best,filename)
-    else:
-        checkpoint = torch.load(filename)
-        # import pdb; pdb.set_trace()
-        val = checkpoint['best_val'][eval_score]
-        best_val=all_val[eval_score]
-        is_best =bool(best_val>val)
-        if is_best:
-            save_checkpoint({
-            'network':model.state_dict(),
-            'logits':all_logits,
+            'network': model.state_dict(),
+            'logits': all_logits,
             'best_val': all_val,
-            'args': args}, is_best,filename)
+            'args': args
+        }, checkpoint_path)
+    else:
+        print("No new checkpoint saved. Current checkpoint is better or equal.")
+
 
 if __name__ == "__main__":
     dst='test/'

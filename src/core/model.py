@@ -85,7 +85,7 @@ class TextModel(nn.Module):
         self.proj2 = nn.Linear(self.d_txt, self.d_txt)
         self.out_layer = nn.Linear(self.d_txt, output_dim)
 
-        if 'ihm' in self.task:
+        if 'ihm'  or 'los' in self.task:
             self.loss_fct1=CrossEntropyLoss()
         elif 'pheno' in self.task:
             self.loss_fct1=nn.BCEWithLogitsLoss()
@@ -107,10 +107,22 @@ class TextModel(nn.Module):
         last_hs_proj += proj_x_txt
         output = self.out_layer(last_hs_proj)
 
+        # if 'ihm' or 'los' in self.task:
+        #     if labels!=None:
+        #         return self.loss_fct1(output, labels)
+        #     return torch.nn.functional.softmax(output,dim=-1)[:,1]
         if 'ihm' in self.task:
-            if labels!=None:
+            if labels is not None:
+                # Continue using binary classification approach for IHM
                 return self.loss_fct1(output, labels)
-            return torch.nn.functional.softmax(output,dim=-1)[:,1]
+            return torch.nn.functional.softmax(output, dim=-1)[:, 1]
+
+        elif 'los' in self.task:
+            if labels is not None:
+                # Use a multiclass classification approach for LOS
+                # Assuming output has the correct shape (batch_size, num_classes)
+                return self.loss_fct1(output, labels)
+            return torch.nn.functional.softmax(output, dim=-1)
 
         elif 'pheno' in self.task:
             if labels!=None:
@@ -478,11 +490,17 @@ class MULTCrossModel(nn.Module):
 
         if self.cross_method in ["self_cross", "moe", "hme"]:
             if self.modeltype == "TS_Text":
-                hiddens = self.trans_self_cross_ts_txt([proj_x_txt, proj_x_ts], ['txt', 'ts'])
+                hiddens = self.trans_self_cross_ts_txt([proj_x_ts, proj_x_txt], ['ts', 'txt'])
             elif self.modeltype == "TS_CXR":
-                hiddens = self.trans_self_cross_ts_txt([proj_x_cxr, proj_x_ts], ['cxr', 'ts'])
+                hiddens = self.trans_self_cross_ts_txt([proj_x_ts, proj_x_cxr], ['ts', 'cxr'])
+            elif self.modeltype == "TS_ECG":
+                hiddens = self.trans_self_cross_ts_txt([proj_x_ts, proj_x_ecg], ['ts', 'ecg'])
             elif self.modeltype == "TS_CXR_Text":
                 hiddens = self.trans_self_cross_ts_txt([proj_x_ts, proj_x_cxr, proj_x_txt], ['ts', 'cxr', 'txt'])
+            elif self.modeltype == "TS_CXR_ECG":
+                hiddens = self.trans_self_cross_ts_txt([proj_x_ts, proj_x_cxr, proj_x_ecg], ['ts', 'cxr', 'ecg'])
+            elif self.modeltype == "TS_ECG_Text":
+                hiddens = self.trans_self_cross_ts_txt([proj_x_ts, proj_x_txt, proj_x_ecg], ['ts', 'txt', 'ecg'])
             # elif self.modeltype == "TS_CXR_Text_Notes":
             #     hiddens = self.trans_self_cross_ts_txt([proj_x_ts, proj_x_cxr, proj_x_txt, proj_x_note], ['ts', 'cxr', 'txt', 'note'])
             elif self.modeltype == "TS_CXR_Text_ECG":
@@ -493,7 +511,6 @@ class MULTCrossModel(nn.Module):
             # h_txt_with_ts, h_ts_with_txt=hiddens
             last_hs = torch.cat([hid[-1] for hid in hiddens], dim=1)
             # last_hs = torch.cat([h_txt_with_ts[-1], h_ts_with_txt[-1]], dim=1)
-
         else:
             if 'CXR' in self.modeltype:
                 proj_x_txt = proj_x_cxr
@@ -523,16 +540,29 @@ class MULTCrossModel(nn.Module):
         last_hs_proj += last_hs
         output = self.out_layer(last_hs_proj)
 
-        if 'ihm' in self.task or 'los' in self.task:
-            if labels!=None:
-                return self.loss_fct1(output, labels)
-            return torch.nn.functional.softmax(output,dim=-1)[:,1]
+        # if 'ihm' in self.task or 'los' in self.task:
+        #     if labels!=None:
+        #         return self.loss_fct1(output, labels), torch.nn.functional.softmax(output, dim=-1)[:, 1]
+        #     return last_hs_proj, torch.nn.functional.softmax(output,dim=-1)[:,1]
+
+        if 'ihm' in self.task:
+            if labels is not None:
+                # Continue using binary classification approach for IHM
+                return self.loss_fct1(output, labels), torch.nn.functional.softmax(output, dim=-1)[:, 1]
+            return last_hs_proj, torch.nn.functional.softmax(output, dim=-1)[:, 1]
+
+        elif 'los' in self.task:
+            if labels is not None:
+                # Use a multiclass classification approach for LOS
+                # Assuming output has the correct shape (batch_size, num_classes)
+                return self.loss_fct1(output, labels), torch.nn.functional.softmax(output, dim=-1)
+            return last_hs_proj, torch.nn.functional.softmax(output, dim=-1)
 
         elif 'pheno' in self.task:
             if labels!=None:
                 labels=labels.float()
                 return self.loss_fct1(output, labels)
-            return torch.nn.functional.sigmoid(output)
+            return last_hs_proj, torch.nn.functional.sigmoid(output)
 
 
 class TSMixed(nn.Module):
@@ -729,13 +759,37 @@ class TSMixed(nn.Module):
         if self.Interp:
             reconloss_interp=recon_loss(x_ts_interp,x_ts_mask_interp,recon_m,recon_interp,self.d_ts)
 
-        if 'ihm' in self.task or 'los' in self.task:
-            if labels!=None:
+        # if 'ihm' in self.task or 'los' in self.task:
+        #     if labels!=None:
+        #         if self.Interp:
+        #             return self.loss_fct1(output, labels)+reconloss_interp
+        #         else:
+        #             return self.loss_fct1(output, labels), torch.nn.functional.softmax(output, dim=-1)[:, 1]
+        #     return last_hs_proj, torch.nn.functional.softmax(output,dim=-1)[:,1]
+
+        if 'ihm' in self.task:
+            if labels is not None:
                 if self.Interp:
-                    return self.loss_fct1(output, labels)+reconloss_interp
+                    # Assuming `reconloss_interp` is calculated elsewhere in the code
+                    return self.loss_fct1(output, labels) + reconloss_interp
                 else:
-                    return self.loss_fct1(output, labels)
-            return torch.nn.functional.softmax(output,dim=-1)[:,1]
+                    # For binary classification of IHM, assuming output is two classes
+                    return self.loss_fct1(output, labels), torch.nn.functional.softmax(output, dim=-1)[:, 1]
+            else:
+                # If labels are None, return the projection and the softmax probability of the positive class
+                return last_hs_proj, torch.nn.functional.softmax(output, dim=-1)[:, 1]
+
+        elif 'los' in self.task:
+            if labels is not None:
+                if self.Interp:
+                    # Handle interpolation logic if applicable to LOS task
+                    return self.loss_fct1(output, labels) + reconloss_interp
+                else:
+                    # For multiclass classification, return the loss and the softmax probabilities for all classes
+                    return self.loss_fct1(output, labels), torch.nn.functional.softmax(output, dim=-1)
+            else:
+                # If labels are None, return the projection and the softmax probabilities for all classes
+                return last_hs_proj, torch.nn.functional.softmax(output, dim=-1)
 
         elif 'pheno' in self.task:
             if labels!=None:
@@ -901,10 +955,22 @@ class TextMoE(nn.Module):
             last_hs_proj += last_hs
             output = self.out_layer(last_hs_proj)
 
-        if 'ihm' in self.task or 'los' in self.task:
-            if labels!=None:
-                return self.loss_fct1(output, labels)
-            return torch.nn.functional.softmax(output,dim=-1)[:,1]
+        # if 'ihm' in self.task or 'los' in self.task:
+        #     if labels!=None:
+        #         return self.loss_fct1(output, labels), torch.nn.functional.softmax(output, dim=-1)[:, 1]
+        #     return last_hs_proj, torch.nn.functional.softmax(output,dim=-1)[:,1]
+        if 'ihm' in self.task:
+            if labels is not None:
+                # Continue using binary classification approach for IHM
+                return self.loss_fct1(output, labels), torch.nn.functional.softmax(output, dim=-1)[:, 1]
+            return last_hs_proj, torch.nn.functional.softmax(output, dim=-1)[:, 1]
+
+        elif 'los' in self.task:
+            if labels is not None:
+                # Use a multiclass classification approach for LOS
+                # Assuming output has the correct shape (batch_size, num_classes)
+                return self.loss_fct1(output, labels), torch.nn.functional.softmax(output, dim=-1)
+            return last_hs_proj, torch.nn.functional.softmax(output, dim=-1)
 
         elif 'pheno' in self.task:
             if labels!=None:
@@ -1058,10 +1124,193 @@ class CXRMoE(nn.Module):
             last_hs_proj += last_hs
             output = self.out_layer(last_hs_proj)
 
-        if 'ihm' in self.task or 'los' in self.task:
+        # if 'ihm' in self.task or 'los' in self.task:
+        #     if labels!=None:
+        #         return self.loss_fct1(output, labels), torch.nn.functional.softmax(output, dim=-1)[:, 1]
+        #     return last_hs_proj, torch.nn.functional.softmax(output,dim=-1)[:,1]
+        if 'ihm' in self.task:
+            if labels is not None:
+                # Continue using binary classification approach for IHM
+                return self.loss_fct1(output, labels), torch.nn.functional.softmax(output, dim=-1)[:, 1]
+            return last_hs_proj, torch.nn.functional.softmax(output, dim=-1)[:, 1]
+
+        elif 'los' in self.task:
+            if labels is not None:
+                # Use a multiclass classification approach for LOS
+                # Assuming output has the correct shape (batch_size, num_classes)
+                return self.loss_fct1(output, labels), torch.nn.functional.softmax(output, dim=-1)
+            return last_hs_proj, torch.nn.functional.softmax(output, dim=-1)
+
+        elif 'pheno' in self.task:
             if labels!=None:
+                labels=labels.float()
                 return self.loss_fct1(output, labels)
-            return torch.nn.functional.softmax(output,dim=-1)[:,1]
+            return torch.nn.functional.sigmoid(output)
+
+class ECGMoE(nn.Module):
+    def __init__(self,args,device,modeltype=None,orig_d_ecg=None):
+
+        super(ECGMoE, self).__init__()
+        if modeltype!=None:
+            self.modeltype=modeltype
+        else:
+            self.modeltype=args.modeltype
+        self.args = args
+        self.num_modalities = args.num_modalities
+        self.token_type_embeddings = nn.Embedding(args.num_modalities, args.embed_dim)
+        self.TS_mixup=args.TS_mixup
+        self.mixup_level=args.mixup_level
+
+        self.num_heads = args.num_heads
+        self.attn_mask = False
+        self.layers = args.layers
+        self.device=device
+        self.kernel_size=args.kernel_size
+        self.dropout=args.dropout
+        
+        self.Interp=args.Interp
+
+        self.irregular_learn_emb_text=args.irregular_learn_emb_text
+        self.irregular_learn_emb_cxr=args.irregular_learn_emb_cxr
+        self.irregular_learn_emb_ecg=args.irregular_learn_emb_ecg
+
+        self.task=args.task
+
+        self.tt_max=args.tt_max
+
+        self.time_query=torch.linspace(0, 1., self.tt_max)
+        self.periodic = nn.Linear(1, args.embed_time-1)
+        self.linear = nn.Linear(1, 1)
+
+        output_dim = args.num_labels
+
+        self.orig_d_ecg=orig_d_ecg
+        self.d_ecg=args.embed_dim
+
+        if self.Interp:
+            self.s_intp=S_Interp(args,self.device,self.orig_d_ts)
+            self.c_intp=Cross_Interp(args,self.device,self.orig_d_ts)
+            self.proj_ts_intp = nn.Conv1d(self.orig_d_ts*3, self.d_ts, kernel_size=self.kernel_size, padding=math.floor((self.kernel_size -1) / 2), bias=False)
+
+        if "ECG" in self.modeltype:
+            self.orig_d_ecg = 256
+            self.d_ecg = args.embed_dim
+            self.ecg_seq_num = 5
+
+            if self.irregular_learn_emb_ecg:
+                self.time_attn_ecg = multiTimeAttention(256, self.d_ecg, args.embed_time, 8)
+            else:
+                self.proj_ecg = nn.Conv1d(self.orig_d_ecg, self.d_ecg, kernel_size=self.kernel_size, padding=math.floor((self.kernel_size -1) / 2), bias=False)
+                
+            dim = self.d_ecg
+            self.proj1 = nn.Linear(dim, dim)
+            self.proj2 = nn.Linear(dim, dim)
+            self.out_layer = nn.Linear(dim, output_dim)
+
+        self.trans_ecg_mem = self.get_network(self_type='ecg_mem', layers=args.layers)
+
+        if 'ihm' in self.task or 'los' in self.task:
+            self.loss_fct1=nn.CrossEntropyLoss()
+        elif 'pheno' in self.task:
+            self.loss_fct1=nn.BCEWithLogitsLoss()
+        else:
+            raise ValueError("Unknown task")
+
+    def get_network(self, self_type='ecg_mem', layers=-1):
+        embed_dim=self.d_ecg
+        if self.irregular_learn_emb_ecg:
+            embed_dim, q_seq_len, kv_seq_len = self.d_ecg, self.tt_max, None
+        else:
+            embed_dim, q_seq_len, kv_seq_len = self.d_ecg, self.ecg_seq_num, None
+
+        return TransformerEncoderMoE(
+                                args=self.args,
+                                embed_dim=embed_dim,
+                                num_heads=self.num_heads,
+                                layers=layers,
+                                device=self.device,
+                                attn_dropout=self.dropout,
+                                relu_dropout=self.dropout,
+                                res_dropout=self.dropout,
+                                embed_dropout=self.dropout,
+                                attn_mask=self.attn_mask,
+                                q_seq_len=q_seq_len,
+                                kv_seq_len=kv_seq_len)
+
+    def learn_time_embedding(self, tt):
+        tt = tt.to(self.device)
+        tt = tt.unsqueeze(-1)
+        out2 = torch.sin(self.periodic(tt))
+        out1 = self.linear(tt)
+        return torch.cat([out1, out2], -1)
+    
+    def _missing_indices(self, missing_idx):
+        all_indices = torch.arange(len(missing_idx))
+        missing_indices = torch.nonzero(missing_idx).squeeze(1)
+        missing_mask = torch.ones(len(missing_idx), dtype=torch.bool)
+        missing_mask[missing_indices] = False
+        non_missing = all_indices[missing_mask]
+        return missing_indices, non_missing
+
+    def forward(self, ecg_feats, ecg_time, ecg_time_mask, ecg_missing, labels=None):
+        """
+        dimension [batch_size, seq_len, n_features]
+
+        """
+        if "ECG" in self.modeltype:
+            # compute irregular ECG attention
+            if self.irregular_learn_emb_ecg:
+                time_key = self.learn_time_embedding(ecg_time).to(self.device)
+                time_query = self.learn_time_embedding(self.time_query.unsqueeze(0)).to(self.device)
+
+                proj_x_ecg=self.time_attn_ecg(time_query, time_key, ecg_feats, ecg_time_mask)
+                proj_x_ecg=proj_x_ecg.transpose(0, 1)
+            else:
+                ecg_feats = ecg_feats.transpose(1, 2)
+                proj_x_ecg = ecg_feats if self.orig_d_ecg == self.d_ecg else self.proj_ecg(ecg_feats)
+                proj_x_ecg = proj_x_ecg.permute(2, 0, 1)
+            
+            if ecg_missing is None or torch.all(ecg_missing == 0):
+            # Initialize `temp` with zeros to match the purpose of imputation
+                temp = torch.zeros((self.args.tt_max, ecg_feats.shape[0]), dtype=torch.float, device=ecg_feats.device)
+
+                # Add a dimension to `temp` to match `proj_x_txt`
+                temp = temp.unsqueeze(-1)  # Shape is now `[tt_max, batch_size, 1]`
+
+                # Ensure proj_x_txt and temp are on the same device before adding
+                proj_x_ecg = proj_x_ecg.to(temp.device)
+                proj_x_ecg += temp
+            elif not torch.all(ecg_missing == 0):
+                # proj_x_ecg = None
+                missing_indices, non_missing = self._missing_indices(ecg_missing)
+                proj_x_ecg[:, non_missing, :] += self.token_type_embeddings(torch.ones((self.args.tt_max, len(non_missing)), dtype=torch.long, device=x_ts.device))
+                proj_x_ecg[:, missing_indices, :] = torch.zeros((self.args.tt_max, len(missing_indices), self.args.embed_dim), dtype=torch.float16, device=x_ts.device)
+
+            proj_x_ecg = self.trans_ecg_mem(proj_x_ecg)
+            # For a single modality, no concatenation is required, directly use the output
+            #last_hs = proj_x_txt[-1]  # Use the last hidden state of the single modality
+            last_hs = torch.mean(proj_x_ecg[-1], dim=0)  # Average over time dimension [batch_size, embed_dim]
+
+            last_hs_proj = self.proj2(F.dropout(F.relu(self.proj1(last_hs)), p=self.dropout, training=self.training))
+            last_hs_proj += last_hs
+            output = self.out_layer(last_hs_proj)
+
+        # if 'ihm' in self.task or 'los' in self.task:
+        #     if labels!=None:
+        #         return self.loss_fct1(output, labels), torch.nn.functional.softmax(output, dim=-1)[:, 1]
+        #     return last_hs_proj, torch.nn.functional.softmax(output,dim=-1)[:,1]
+        if 'ihm' in self.task:
+            if labels is not None:
+                # Continue using binary classification approach for IHM
+                return self.loss_fct1(output, labels), torch.nn.functional.softmax(output, dim=-1)[:, 1]
+            return last_hs_proj, torch.nn.functional.softmax(output, dim=-1)[:, 1]
+
+        elif 'los' in self.task:
+            if labels is not None:
+                # Use a multiclass classification approach for LOS
+                # Assuming output has the correct shape (batch_size, num_classes)
+                return self.loss_fct1(output, labels), torch.nn.functional.softmax(output, dim=-1)
+            return last_hs_proj, torch.nn.functional.softmax(output, dim=-1)
 
         elif 'pheno' in self.task:
             if labels!=None:
