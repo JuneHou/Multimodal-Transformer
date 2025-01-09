@@ -191,7 +191,7 @@ def trainer_irg(model,args,accelerator,train_dataloader,dev_dataloader,test_data
             elif args.modeltype == "ECG":
                 loss, probs=model(ecg_feats=ecg_feats,\
                         ecg_time=ecg_time, \
-                        ecg_time_mask=ecg_time_mask, ecg_missing=cxr_missing, \
+                        ecg_time_mask=ecg_time_mask, ecg_missing=ecg_missing, \
                         labels=label)
 
             if loss is None:
