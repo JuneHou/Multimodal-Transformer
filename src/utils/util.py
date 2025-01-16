@@ -11,10 +11,19 @@ from preprocessing.data import *
 import statistics as stat
 logger = None
 import  argparse
-import pickle
 from accelerate import Accelerator
 from sklearn import metrics
 import pdb
+import seaborn as sns
+import pandas as pd
+from itertools import combinations
+from numpy import dot
+from numpy.linalg import norm
+from scipy.stats import entropy
+from sklearn.metrics import mutual_info_score
+from ast import literal_eval
+import os
+from tqdm import tqdm
 
 from transformers import (AutoTokenizer,
                           AutoModel,
@@ -43,7 +52,8 @@ def parse_args():
 
     parser.add_argument("--seed", type=int, default=42, help="A seed for reproducible training.")
     parser.add_argument("--mode", type=str, default="train", help="train/test")
-    parser.add_argument("--modeltype", type=str, default="TS_Text", help="TS, Text or TS_Text")
+    #parser.add_argument("--modeltype", type=str, default="TS_Text", help="TS, Text or TS_Text")
+    parser.add_argument("--modeltype", nargs='*', type=str, help="TS, Text or TS_Text")
     parser.add_argument("--eval_score", default=['auc', 'auprc', 'f1'], type=list)
 
     parser.add_argument('--num_labels', type=int, default=2)
@@ -359,3 +369,72 @@ def merge_reg_irg(dataPath_reg, dataPath_irg):
     with open(dataPath_reg, 'wb') as f:
         pickle.dump(data_reg,f)
 
+def split_ids(id_string, n=8):
+    # Convert to string if the input is not already a string
+    id_string = str(id_string)
+    # Assuming the hadm_id and stay_id are concatenated as one string
+    # Convert hadm_id to float to match the format in the original dataset
+    hadm_id = float(id_string[:8])  # Convert first part to float
+    stay_id = int(id_string[8:])   # Convert remaining part to int
+    return hadm_id, stay_id
+
+def assign_pid_4probs(ts_pred, text_pred, cxr_pred, ecg_pred, multi_pred):
+    # Merge predictions
+    df = ts_pred[['ids', 'Probs']].rename(columns={'Probs': 'ts'})
+    df = df.merge(text_pred[['ids', 'Probs']], on='ids', how='left').rename(columns={'Probs': 'text'})
+    df = df.merge(cxr_pred[['ids', 'Probs']], on='ids', how='left').rename(columns={'Probs': 'cxr'})
+    df = df.merge(ecg_pred[['ids', 'Probs']], on='ids', how='left').rename(columns={'Probs': 'ecg'})
+    df = df.merge(multi_pred[['ids', 'Probs']].rename(columns={'Probs': 'Multi'}), on='ids', how='left').dropna()
+
+    # Convert probability strings to arrays
+    modalities = ['ts', 'text', 'cxr', 'ecg', 'Multi']
+    for col in modalities:
+        df[col] = df[col].apply(lambda x: np.array(literal_eval(x)) if pd.notnull(x) else np.array([0]*4))  # Assuming 4 classes
+
+    # Initialize KL divergence columns with default 0
+    for modality in modalities[:-1]:  # Exclude 'Multi'
+        df[f'kl_{modality}'] = 0
+
+    # Calculate KL divergence where data is available
+    for modality in modalities[:-1]:
+        df[f'kl_{modality}'] = df.apply(lambda row: entropy(row[modality], row['Multi']) if np.sum(row[modality]) != 0 else 0, axis=1)
+
+    # Normalize KL divergence scores across the dataset
+    for modality in modalities[:-1]:
+        max_kl = df[f'kl_{modality}'].max()
+        min_kl = df[f'kl_{modality}'].min()
+        range_kl = max_kl - min_kl
+        if range_kl > 0:
+            df[f'kl_{modality}'] = (df[f'kl_{modality}'] - min_kl) / range_kl
+        else:
+            df[f'kl_{modality}'] = 0  # Avoid division by zero if all values are the same
+
+    return df
+
+def update_stays_with_weights(file_path, kl_scores):
+    with open(file_path, 'rb') as file:
+        stays_list = pickle.load(file)
+
+    match_count = 0
+
+    for stay in tqdm(stays_list):
+        # Initialize weights to 0 by default
+        for modality in ['ts', 'text', 'cxr', 'ecg']:
+            stay[f'{modality}_weight'] = 0
+
+        # Generate ID string
+        id_string = f"{int(stay['hadm_id']):08d}{int(stay['stay_id'])}"
+        
+        # Check for matching row in kl_scores
+        if id_string in kl_scores['ids'].astype(str).values:
+            matching_row = kl_scores[kl_scores['ids'].astype(str) == id_string].iloc[0]
+            
+            for modality in ['ts', 'text', 'cxr', 'ecg']:
+                if stay.get(f'{modality}_missing', 0) == 0:  # Check if the modality data is not missing
+                    stay[f'{modality}_weight'] = matching_row[f'kl_{modality}']
+            match_count += 1
+
+    with open(file_path, 'wb') as file:
+        pickle.dump(stays_list, file)
+    print(f"Updated and saved {file_path}")
+    print(f"Matched {match_count} out of {len(stays_list)} records in {file_path}")

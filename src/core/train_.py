@@ -7,7 +7,7 @@ import pandas as pd
 import warnings 
 
 
-def eval_test(args, model, dataloader, device, mode=None):
+def eval_test(args, modeltype, model, dataloader, device, mode=None):
     print("Mode: ", mode)
     model.eval()  # Set model to evaluation mode.
 
@@ -36,7 +36,7 @@ def eval_test(args, model, dataloader, device, mode=None):
             print("No best model found. Evaluating with the current model state.")
 
     # Perform evaluation
-    eval_vals = evaluate_irg(args=args, device=device, data_loader=dataloader, model=model, mode=mode)
+    eval_vals = evaluate_irg(args=args, modeltype=modeltype, device=device, data_loader=dataloader, model=model, mode=mode)
     for eval_type, val in eval_vals.items():
         result_dict[seed][eval_type] = {}
         result_dict[seed][eval_type][mode] = val
@@ -75,15 +75,15 @@ def batch_input_fields(batch, model_type, train=True):
     batch_fields = {key: batch[i] for i, key in enumerate(keys)}
 
 
-    model_input_fields = {'TS': ['x_ts', 'x_ts_mask', 'ts_tt_list', 'reg_ts'],
+    model_input_fields = {'TS': ['x_ts', 'x_ts_mask', 'ts_tt_list', 'reg_ts', 'ts_weight'],
                           'Text': ['input_ids_sequences', 'attn_mask_sequences', 'text_emb',
-                                'note_time_list', 'note_time_mask_list', 'text_missing'],
-                          'CXR': ['cxr_feats', 'cxr_time', 'cxr_time_mask', 'cxr_missing'],
-                          'ECG': ['ecg_feats', 'ecg_time', 'ecg_time_mask', 'ecg_missing']}
+                                'note_time_list', 'note_time_mask_list', 'text_missing', 'text_weight'],
+                          'CXR': ['cxr_feats', 'cxr_time', 'cxr_time_mask', 'cxr_missing', 'cxr_weight'],
+                          'ECG': ['ecg_feats', 'ecg_time', 'ecg_time_mask', 'ecg_missing', 'ecg_weight'],}
 
-
-    input_fields = {'ts_weight': batch_fields['ts_weight'], 'text_weight': batch_fields['text_weight'],
+    weight_fields = {'ts_weight': batch_fields['ts_weight'], 'text_weight': batch_fields['text_weight'],
                 'cxr_weight': batch_fields['cxr_weight'], 'ecg_weight': batch_fields['ecg_weight']}
+    input_fields = {}
 
     if train:
         input_fields['labels'] = batch_fields['labels']
@@ -97,20 +97,21 @@ def batch_input_fields(batch, model_type, train=True):
         
 
 
-def trainer_irg(model,args,accelerator,train_dataloader,dev_dataloader,test_data_loader,device,optimizer,pretrain_epoch=None,writer=None,scheduler=None):
+def trainer_irg(model,args,accelerator,modeltype,train_dataloader,dev_dataloader,test_data_loader,device,optimizer,pretrain_epoch=None,writer=None,scheduler=None):
     count=0
     global_step=0
     best_evals={}
+    modeltype = modeltype
 
     # Check if the file already exists and load previous gradients
-    output_file_base = '/data/wang/junh/githubs/Multimodal-Transformer/' + args.modeltype
+    output_file_base = '/data/wang/junh/githubs/Multimodal-Transformer/' + modeltype
     for epoch in tqdm(range(args.num_train_epochs)):
         cumulative_gradients = defaultdict(lambda: None)  # Initialize with Non
         all_gradients = []
         all_ids = []
         
         model.train()
-        if "Text" in args.modeltype:
+        if "Text" in modeltype:
             if args.num_update_bert_epochs<args.num_train_epochs and (epoch)%args.num_update_bert_epochs==0 and count<args.bertcount:
                 count+=1
                 print("bert update at epoch "+ str(epoch) )
@@ -131,7 +132,8 @@ def trainer_irg(model,args,accelerator,train_dataloader,dev_dataloader,test_data
                 continue
             global_step+=1
 
-            input_fields, _ = batch_input_fields(batch, args.modeltype)
+
+            input_fields, _ = batch_input_fields(batch, modeltype)
 
             loss, probs = model(**input_fields)
 
@@ -182,14 +184,14 @@ def trainer_irg(model,args,accelerator,train_dataloader,dev_dataloader,test_data
         #         "gradients": [json.dumps({k: v for k, v in batch.items()}) for batch in all_gradients]
         #     }
         #     df = pd.DataFrame(gradient_data)
-        #     csv_file = f"{args.output_dir}/{args.modeltype}_gradients_epoch_{epoch + 1}.csv"
+        #     csv_file = f"{args.output_dir}/{modeltype}_gradients_epoch_{epoch + 1}.csv"
         #     df.to_csv(csv_file, index=False)
 
         #     print(f"Saved gradients to {csv_file}")
 
         # # Save cumulative gradients, probs, and predictions for this epoch
-        # gradient_file = f"{args.output_dir}{args.modeltype}_gradients_{epoch + 1}.json"
-        # probs_file = f"{args.output_dir}{args.modeltype}_probs_{epoch + 1}.json"
+        # gradient_file = f"{args.output_dir}{modeltype}_gradients_{epoch + 1}.json"
+        # probs_file = f"{args.output_dir}{modeltype}_probs_{epoch + 1}.json"
 
         # with open(gradient_file, 'w') as f:
         #     json.dump({k: v.tolist() for k, v in cumulative_gradients.items()}, f, indent=4)
@@ -199,7 +201,7 @@ def trainer_irg(model,args,accelerator,train_dataloader,dev_dataloader,test_data
         if none_count>0:
             print("none_count",none_count)
 
-        eval_vals=evaluate_irg(args,device,dev_dataloader,model)
+        eval_vals=evaluate_irg(args,modeltype,device,dev_dataloader,model)
         print(eval_vals)
         # for k,v in eval_vals.items():
         #     if k== 'auc_scores':
@@ -217,7 +219,7 @@ def trainer_irg(model,args,accelerator,train_dataloader,dev_dataloader,test_data
             writer.close()
 
 
-def evaluate_irg(args, device, data_loader, model, mode=None):
+def evaluate_irg(args, modeltype, device, data_loader, model, mode=None):
     model.eval()
 
     eval_ids = []
@@ -234,12 +236,12 @@ def evaluate_irg(args, device, data_loader, model, mode=None):
         
         with torch.no_grad():
 
-            input_fields, batch = batch_input_fields(batch, args.modeltype, train=False)
+            input_fields, batch = batch_input_fields(batch, modeltype, train=False)
 
             label = batch['labels']
             ids = batch['ids']
 
-            proj, probs = model(**input_fields)
+            probs = model(**input_fields)
 
             if probs is None:
                 warnings.warn("probs is None!")
@@ -249,8 +251,6 @@ def evaluate_irg(args, device, data_loader, model, mode=None):
                 continue
             probs = probs.cpu().numpy()
             label = label.cpu().numpy()
-            proj = proj.cpu().numpy()
-            eval_proj += proj.tolist()
             eval_probs += probs.tolist()
             record_probs.extend(probs.tolist())
             eval_labels += label.tolist()
@@ -265,7 +265,6 @@ def evaluate_irg(args, device, data_loader, model, mode=None):
     
     if mode is not None:
         all_probs = np.array(record_probs)
-        all_proj = np.stack(eval_proj)
         all_labels = np.array(eval_labels)
         all_ids = np.array(eval_ids)
         
@@ -286,7 +285,6 @@ def evaluate_irg(args, device, data_loader, model, mode=None):
                 "Predicted": predictions,
                 "Ground_Truth": all_labels,
                 "Probs": all_probs,
-                "Proj": list(map(list, all_proj))
             })
         else:
             # Multi-label classification, convert each row to tuple or string
@@ -295,12 +293,11 @@ def evaluate_irg(args, device, data_loader, model, mode=None):
                 "Predicted": [tuple(row) for row in predictions],
                 "Ground_Truth": [tuple(row) for row in all_labels],
                 "Probs": all_probs,
-                "Proj": list(map(list, all_proj))
             })
 
         # Save to a CSV file
-        #output_file = f"{args.output_dir}/{args.task}_{args.modeltype}_{mode}_results.csv"
-        output_file = f"{args.output_dir}/{args.modeltype}_{mode}_results.csv"
+        #output_file = f"{args.output_dir}/{args.task}_{modeltype}_{mode}_results.csv"
+        output_file = f"{args.output_dir}/{modeltype}_{mode}_results.csv"
         results_df.to_csv(output_file, index=False)
         print(f"Saved test predictions to {output_file}")
     

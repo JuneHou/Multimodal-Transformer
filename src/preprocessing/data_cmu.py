@@ -46,13 +46,12 @@ def data_prepare(args, mode, data=None):
         dataset (object): The dataset object.
         dataloader (object): The dataloader object.
     """
-    dataset = T5_CMUData(args.file_path, mode)
+    dataset = T5_CMUData(args.file_path, mode, args.debug)
 
     if mode == 'train':
         dataloader = DataLoader(dataset, shuffle=True, batch_size=args.train_batch_size, collate_fn=collate_fn, drop_last=True)
     else:
-        sampler = SequentialSampler(dataset)
-        dataloader = DataLoader(dataset, sampler=sampler, batch_size=args.eval_batch_size, collate_fn=collate_fn, drop_last=True)
+        dataloader = DataLoader(dataset, shuffle=True, batch_size=args.eval_batch_size, collate_fn=collate_fn, drop_last=True)
 
     return dataset, dataloader
 
@@ -61,7 +60,9 @@ class T5_CMUData(Dataset):
         """
         Initializes the dataset.
         """
+        self.debug = debug
         self.data = self.load_data(os.path.join(file_path, f"{mode}.pkl"), debug)
+        print("Debug mode:", debug)
         print(f"Loaded {mode} data with {len(self.data)} samples.")
 
     def __getitem__(self, idx):
@@ -92,4 +93,6 @@ class T5_CMUData(Dataset):
         """
         with open(file_path, 'rb') as file:
             data = pickle.load(file)
+            if debug:
+                data = data[:100]
         return data

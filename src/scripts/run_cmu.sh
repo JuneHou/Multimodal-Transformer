@@ -7,18 +7,19 @@ python -W ignore ./src/scripts/main_cmu.py \
     --train_batch_size 2 \
     --eval_batch_size 8 \
     --seed 42 \
-    --gradient_accumulation_steps 16 \
-    --learning_rate 0.00002 \
+    --gradient_accumulation_steps 4 \
+    --learning_rate 0.0001 \
     --layers 3 \
     --num_heads 8 \
-    --output_dir "/home/jun/Workspace/results/" \
+    --output_dir "/data/wang/junh/results/Fuse_moe/multiclass/" \
     --embed_dim 128 \
     --task 'multiclass' \
-    --file_path '/home/jun/Workspace/datas/CMU-MOSI/' \
+    --file_path '/data/wang/junh/datasets/MOSI/' \
     --cross_method "moe" \
     --num_of_experts 16 \
     --top_k 2 \
     --router_type 'permod' \
     --hidden_size 512 \
     --gating_function "laplace"\
-    --device 'cuda:4' \
+    --device 'cuda:3' \
+    --num_labels 1 \

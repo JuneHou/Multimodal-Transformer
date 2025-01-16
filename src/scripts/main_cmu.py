@@ -13,8 +13,9 @@ sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 #from core.model import MULTCrossModel
 #from core.train import trainer_irg, eval_test
 from preprocessing.data_cmu import data_prepare
-from moe_cmu import *
-#from core.train_cmu import *
+#from moe_cmu import *
+from core.model_cmu import MULTCrossModel
+from core.train_cmu import *
 from utils.checkpoint import *
 from utils.util import *
 from accelerate import Accelerator
@@ -49,6 +50,9 @@ def parse_args():
     parser.add_argument("--hidden_size", type=int, default=512, help='Hidden size for the router')
     parser.add_argument("--gating_function", nargs='*', type=str, help="all gating functions: softmax, laplace, gaussian, enter at least one")
     parser.add_argument("--device", type=str, default='cuda:7', help='Device to use for training')
+    parser.add_argument("--tt_max", type=int, default=64, help='Max number of tokens')
+    parser.add_argument("--modeltype", type=str, default='Text_Visual_Acoustic', help='Model type')
+    parser.add_argument("--debug", action='store_true', help='Debug mode')
     # Add other necessary arguments as needed
     return parser.parse_args()
 
@@ -72,7 +76,7 @@ def main():
     _, test_dataloader = data_prepare(args, 'test')
 
     # Model initialization
-    model = MULTCrossModel(args=args, device=device, orig_d_txt=1024, orig_d_visual=47, orig_d_acoustic=74)
+    model = MULTCrossModel(args=args, device=device, modeltype="Text_Visual_Acoustic", orig_d_txt=1024, orig_d_visual=47, orig_d_acoustic=74)
     optimizer = optim.Adam(model.parameters(), lr=args.learning_rate)
 
     model, optimizer, train_dataloader, val_dataloader, test_dataloader = \

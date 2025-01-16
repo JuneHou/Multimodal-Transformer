@@ -481,6 +481,7 @@ class TransformerCrossEncoder(nn.Module):
         for layer in range(layers):
             new_layer = TransformerCrossEncoderLayer(args,
                                                     embed_dim,
+                                                    device=device,
                                                     num_heads=num_heads,
                                                     attn_dropout=attn_dropout,
                                                     relu_dropout=relu_dropout,
@@ -530,10 +531,11 @@ class TransformerCrossEncoder(nn.Module):
 
 
 class TransformerCrossEncoderLayer(nn.Module):
-    def __init__(self, args, embed_dim, num_heads=4, attn_dropout=0.1, relu_dropout=0.1, res_dropout=0.1, 
+    def __init__(self, args, embed_dim, device, num_heads=4, attn_dropout=0.1, relu_dropout=0.1, res_dropout=0.1, 
                  attn_mask=False, num_modalities=2):
         super().__init__()
         self.args = args
+        self.device = device
         self.embed_dim = embed_dim
         self.num_heads = num_heads
         self.num_modalities = num_modalities
@@ -584,7 +586,7 @@ class TransformerCrossEncoderLayer(nn.Module):
             num_modalities=args.num_modalities,
             gating=args.gating_function[0])
             self.moe = MoE(moe_config)
-            self.moe = self.moe.to('cuda:0')
+            self.moe = self.moe.to(device)
         elif args.cross_method == 'hme':
             moe_config = MoEConfig(
             num_experts=args.num_of_experts,
@@ -596,7 +598,7 @@ class TransformerCrossEncoderLayer(nn.Module):
             num_modalities=args.num_modalities,
             gating=args.gating_function)
             self.moe = HierarchicalMoE(moe_config)
-            self.moe = self.moe.to('cuda:0')
+            self.moe = self.moe.to(device)
         
     def forward(self, x_list, modality):
         """
