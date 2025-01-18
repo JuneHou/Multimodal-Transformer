@@ -8,7 +8,7 @@ from torch.nn.utils.rnn import pad_sequence
 import pdb
 
 
-def data_perpare(args,modeltype,mode,tokenizer,data=None):
+def data_perpare(args,mode,tokenizer,data=None):
     """
     Prepare the data for training or evaluation.
 
@@ -23,7 +23,7 @@ def data_perpare(args,modeltype,mode,tokenizer,data=None):
         sampler (object): The sampler object.
         dataloader (object): The dataloader object.
     """
-    dataset=TSNote_Irg(args,modeltype, mode, tokenizer, data=data)
+    dataset=TSNote_Irg(args, mode, tokenizer, data=data)
 
     if mode=='train':
         #sampler = RandomSampler(dataset)
@@ -97,7 +97,7 @@ class TSNote_Irg(Dataset):
         __len__(self): Returns the length of the dataset.
     """
     
-    def __init__(self,args,modeltype,mode,tokenizer,data=None):
+    def __init__(self,args,mode,tokenizer,data=None):
         self.tokenizer = tokenizer
         self.max_len = args.max_length
         print(args.file_path)
@@ -118,7 +118,7 @@ class TSNote_Irg(Dataset):
         if args.ratio_notes_order!=None:
             self.order_sample=np.random.binomial(1, args.ratio_notes_order,len(self.data))
 
-        self.modeltype=modeltype
+        self.modeltype=args.modeltype
         self.model_name=args.model_name
         self.num_of_notes=args.num_of_notes
         self.tt_max=args.tt_max
@@ -140,30 +140,19 @@ class TSNote_Irg(Dataset):
         else:
             # notes_order= 'Last' if self.order_sample[idx]==1  else 'First'
             notes_order = 'Last'
-        
+
         data_detail = self.data[idx]
         idx=data_detail['name']
         ids = str(round(data_detail.get("hadm_id"))) + str(data_detail.get("stay_id"))
-
-        text_token=[]
-        atten_mask=[]
-        label=data_detail["label"]
-
         if "TS" in self.modeltype:
-            ts_tt=data_detail["ts_tt"]
             reg_ts=data_detail['reg_ts']
             ts=data_detail['irg_ts']
+
             ts_mask=data_detail['irg_ts_mask']
-            ts_tt=torch.tensor([t/self.tt_max for t in ts_tt],dtype=torch.float)
-            reg_ts=F_impute(ts,ts_tt,ts_mask,1,self.tt_max)
-            reg_ts=torch.tensor(reg_ts,dtype=torch.float)
-            ts=torch.tensor(ts,dtype=torch.float)
-            ts_mask=torch.tensor(ts_mask,dtype=torch.long)
         else:
             reg_ts=None
             ts=None
             ts_mask=None
-            ts_tt=None
         
         if 'text_data' not in data_detail.keys():
             text = ""
@@ -172,9 +161,24 @@ class TSNote_Irg(Dataset):
             text_time_to_end=data_detail["text_time_to_end"]
 
         # if len(text)==0:
-        #     return Non
+        #     return None
+        text_token=[]
+        atten_mask=[]
+        label=data_detail["label"]
+        ts_tt=data_detail["ts_tt"]
 
         # reg_ts = data_detail['reg_ts']
+        if self.reg_ts:
+            reg_ts=F_impute(ts,ts_tt,ts_mask,1,self.tt_max)
+            reg_ts=torch.tensor(reg_ts,dtype=torch.float)
+            ts=torch.tensor(ts,dtype=torch.float)
+            ts_mask=torch.tensor(ts_mask,dtype=torch.long)
+            ts_tt=torch.tensor([t/self.tt_max for t in ts_tt],dtype=torch.float)
+        else:
+            reg_ts=None
+            ts=None
+            ts_mask=None
+            ts_tt=None
 
         if 'Text' in self.modeltype and not data_detail['text_missing']:
             text_emb = data_detail['text_embeddings']
@@ -266,18 +270,14 @@ class TSNote_Irg(Dataset):
         
         # 'ts_weight', 'text_weight', 'cxr_weight', 'ecg_weight'
 
-        if 'TS_CXR_Text_ECG' in self.modeltype:
-            ts_weight = torch.tensor(data_detail['ts_weight'], dtype=torch.float)
-            text_weight = torch.tensor(data_detail['text_weight'], dtype=torch.float)
-            cxr_weight = torch.tensor(data_detail['cxr_weight'], dtype=torch.float)
-            ecg_weight = torch.tensor(data_detail['ecg_weight'], dtype=torch.float)
+        ts_weight = torch.tensor(data_detail['ts_weight'], dtype=torch.float)
+        text_weight = torch.tensor(data_detail['text_weight'], dtype=torch.float)
+        cxr_weight = torch.tensor(data_detail['cxr_weight'], dtype=torch.float)
+        ecg_weight = torch.tensor(data_detail['ecg_weight'], dtype=torch.float)
 
-            data_items = {'ids': ids, 'idx':idx, 'label':label, 
-                'ts_weight': ts_weight, 'text_weight': text_weight, 
-                'cxr_weight': cxr_weight, 'ecg_weight': ecg_weight}
-        else:
-            data_items = {'ids': ids, 'idx':idx, 'label':label, 
-                'ts_weight':torch.ones(1), 'text_weight':torch.ones(1), 'cxr_weight':torch.ones(1), 'ecg_weight':torch.ones(1)}
+        data_items = {'ids': ids, 'idx':idx, 'label':label, 
+            'ts_weight': ts_weight, 'text_weight': text_weight, 
+            'cxr_weight': cxr_weight, 'ecg_weight': ecg_weight}
 
         if 'TS' in self.modeltype:
             data_items.update({'ts': ts, 'ts_mask': ts_mask, 'ts_tt': ts_tt, 'reg_ts': reg_ts})

@@ -8,21 +8,21 @@ import fnmatch
 import shutil
 
 
-def construct_path(args, modeltype, eval_score=None):
+def construct_path(args, eval_score=None):
     # Base directory for outputs
-    base_dir = os.path.join(args.output_dir, args.task, modeltype)
+    base_dir = os.path.join(args.output_dir, args.task, args.modeltype)
     
     # Additional specifics based on model type and settings
-    if 'TS' in args.modeltype and args.irregular_learn_emb_ts:
+    if 'Bert' in args.modeltype:
+        specific_dir = os.path.join(args.model_name, args.notes_order, str(args.num_of_notes), str(args.max_length))
+    elif 'TS' in args.modeltype and args.irregular_learn_emb_ts:
         specific_dir = f"TS_{args.tt_max}/{args.TS_model}"
-    # elif 'Text' in args.modeltype and args.irregular_learn_emb_text:
-    #     specific_dir = f"Text_{args.tt_max}/{args.model_name}/{args.max_length}"
-    # elif 'CXR' in args.modeltype and args.irregular_learn_emb_cxr:
-    #     specific_dir = f"CXR_{args.tt_max}/{args.model_name}"
-    # elif 'ECG' in args.modeltype and args.irregular_learn_emb_ecg:
-    #     specific_dir = f"ECG_{args.tt_max}/{args.model_name}"
-    elif 'Text_Visual_Acoustic' in args.modeltype:  
-        specific_dir = f"Text_Visual_Acoustic/{args.tt_max}/"
+    elif 'Text' in args.modeltype and args.irregular_learn_emb_text:
+        specific_dir = f"Text_{args.tt_max}/{args.model_name}/{args.max_length}"
+    elif 'CXR' in args.modeltype and args.irregular_learn_emb_cxr:
+        specific_dir = f"CXR_{args.tt_max}/{args.model_name}"
+    elif 'ECG' in args.modeltype and args.irregular_learn_emb_ecg:
+        specific_dir = f"ECG_{args.tt_max}/{args.model_name}"
     else:
         specific_dir = "general"
     
