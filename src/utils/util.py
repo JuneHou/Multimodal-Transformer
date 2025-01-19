@@ -377,7 +377,7 @@ def split_ids(id_string, n=8):
     stay_id = int(id_string[8:])   # Convert remaining part to int
     return hadm_id, stay_id
 
-def assign_pid_4probs(ts_pred, text_pred, cxr_pred, ecg_pred, multi_pred):
+def assign_4probs(ts_pred, text_pred, cxr_pred, ecg_pred, multi_pred):
     # Merge predictions
     df = ts_pred[['ids', 'Probs']].rename(columns={'Probs': 'ts'})
     df = df.merge(text_pred[['ids', 'Probs']], on='ids', how='left').rename(columns={'Probs': 'text'})

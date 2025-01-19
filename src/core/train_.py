@@ -168,10 +168,12 @@ def trainer_irg(model,args,accelerator,train_dataloader,dev_dataloader,test_data
         if none_count>0:
             print("none_count",none_count)
 
-        eval_vals=evaluate_irg(args,device,dev_dataloader,model)
+        eval_vals=evaluate_irg(args,device,dev_dataloader,model, mode='val')
         print(eval_vals)
-        evaluate_irg(args,device,train_dataloader,model)
-        update_weights(args)
+        evaluate_irg(args,device,train_dataloader,model, mode='train')
+        
+        #update_kl_weights(args)
+        update_pid_weights(args)
         weights_updated = True
         # for k,v in eval_vals.items():
         #     if k== 'auc_scores':
@@ -267,7 +269,7 @@ def evaluate_irg(args, device, data_loader, model, mode=None):
 
     # Save to a CSV file
     #output_file = f"{args.output_dir}/{args.task}_{args.modeltype}_{mode}_results.csv"
-    output_file = f"{args.output_dir}/{args.modeltype}_eval_results.csv"
+    output_file = f"{args.output_dir}/{args.modeltype}_{mode}_results.csv"
     results_df.to_csv(output_file, index=False)
     print(f"Saved test predictions to {output_file}")
     
@@ -320,30 +322,34 @@ def evaluate_irg(args, device, data_loader, model, mode=None):
 
     return eval_vals
 
-def update_weights(args):
+def update_kl_weights(args):
     datasets = ['train', 'val']
-    old_file_path = args.file_path
-    output_dir = os.path.join(args.file_path, 'new_weights')
-    os.makedirs(output_dir, exist_ok=True)
-    
-    # Update args.file_path to point to the new directory
-    args.file_path = output_dir
-    print(f"Updated file path to: {args.file_path}")
+    if not hasattr(args, 'old_file_path'):
+        args.old_file_path = args.file_path
+
+    # Check if 'new_weights' directory already exists in the path
+    if 'new_weights' not in args.file_path:
+        output_dir = os.path.join(args.file_path, 'new_weights')
+        os.makedirs(output_dir, exist_ok=True)
+        args.file_path = output_dir  # Update only if 'new_weights' is not already in path
+        print(f"Updated file path to: {args.file_path}")
+    else:
+        output_dir = args.file_path
 
     # Example usage: train_los-48-cxr-notes-ecg_stays.pkl
     for dataset in datasets:
         print(f"Starting los {dataset} dataset")
-        ts_pred = pd.read_csv(f'{args.output_dir}/TS_{dataset}_results.csv')
+        ts_pred = pd.read_csv(f'/data/wang/junh/results/Fuse_moe/all_los/multiclass/TS_{dataset}_results.csv')
         print("number of ts_pred: ", len(ts_pred))
-        text_pred = pd.read_csv(f'{args.output_dir}/Text_{dataset}_results.csv')
+        text_pred = pd.read_csv(f'/data/wang/junh/results/Fuse_moe/all_los/multiclass/Text_{dataset}_results.csv')
         print("number of text_pred: ", len(text_pred))
-        cxr_pred = pd.read_csv(f'{args.output_dir}/CXR_{dataset}_results.csv')
+        cxr_pred = pd.read_csv(f'/data/wang/junh/results/Fuse_moe/all_los/multiclass/CXR_{dataset}_results.csv')
         print("number of cxr_pred: ", len(cxr_pred))
-        ecg_pred = pd.read_csv(f'{args.output_dir}/ECG_{dataset}_results.csv')
+        ecg_pred = pd.read_csv(f'/data/wang/junh/results/Fuse_moe/all_los/multiclass/ECG_{dataset}_results.csv')
         print("number of ecg_pred: ", len(ecg_pred))
-        multi_pred = pd.read_csv(f'{args.output_dir}/TS_CXR_Text_ECG_eval_results.csv')
+        multi_pred = pd.read_csv(f'{args.output_dir}/TS_CXR_Text_ECG_{dataset}_results.csv')
         print("number of multi_pred: ", len(multi_pred))
 
-        kl_scores = assign_pid_4probs(ts_pred, text_pred, cxr_pred, ecg_pred, multi_pred)
+        kl_scores = assign_4probs(ts_pred, text_pred, cxr_pred, ecg_pred, multi_pred)
         # will update the file path in args to /new_weights/
-        new_stays_list = update_stays_with_weights(old_file_path, output_dir, kl_scores, dataset)
+        new_stays_list = update_stays_with_weights(args.old_file_path, output_dir, kl_scores, dataset)
