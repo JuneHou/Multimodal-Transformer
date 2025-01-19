@@ -97,14 +97,26 @@ def batch_input_fields(batch, model_type, train=True):
         
 
 
-def trainer_irg(model,args,accelerator,train_dataloader,dev_dataloader,test_data_loader,device,optimizer,pretrain_epoch=None,writer=None,scheduler=None):
+def trainer_irg(model,args,accelerator,train_dataloader,dev_dataloader,test_data_loader,tokenizer,device,optimizer,pretrain_epoch=None,writer=None,scheduler=None):
     count=0
     global_step=0
     best_evals={}
+    weights_updated = False
 
     # Check if the file already exists and load previous gradients
     output_file_base = '/data/wang/junh/githubs/Multimodal-Transformer/' + args.modeltype
     for epoch in tqdm(range(args.num_train_epochs)):
+        print(os.listdir(args.file_path))
+        
+        # if result exist, the weights have been updated
+        if weights_updated:
+            from preprocessing.data_mimiciv_ import data_perpare
+            # reload the dataset, the args.file_path have been updated
+            train_dataset, train_dataloader = data_perpare(args, 'train', tokenizer)
+            dev_dataset, dev_dataloader = data_perpare(args, 'val', tokenizer)
+            train_dataloader, dev_dataloader = accelerator.prepare(train_dataloader, dev_dataloader)
+            print("Reloaded the dataset")
+
         cumulative_gradients = defaultdict(lambda: None)  # Initialize with Non
         all_gradients = []
         all_ids = []
@@ -142,29 +154,9 @@ def trainer_irg(model,args,accelerator,train_dataloader,dev_dataloader,test_data
                 continue
             loss = loss.mean() / args.gradient_accumulation_steps
             accelerator.backward(loss)
-            
-            # if epoch == args.num_train_epochs - 1:  # Collect data only in the last epoch
-            #     batch_gradients = {}
-            #     for name, param in model.named_parameters():
-            #         if param.requires_grad and "w_gate" in name:
-            #             batch_gradients[name] = [param.grad[i].detach().cpu().numpy().tolist() for i in range(args.train_batch_size)]
-
-            #     # Collect ids and gradients for each instance in the batch
-            #     all_ids.extend(ids)
-            #     all_gradients.append(batch_gradients)
 
             if (step + 1) % args.gradient_accumulation_steps == 0 or step == len(train_dataloader) - 1:
                 optimizer.step()
-                
-                # # Collect gradients by modality
-                # for name, param in model.named_parameters():
-                #     if param.requires_grad and "w_gate" in name:
-                #         # Initialize cumulative gradient for the parameter
-                #         if name not in cumulative_gradients:
-                #             cumulative_gradients[name] = np.zeros_like(param.grad.detach().cpu().numpy())
-                        
-                #         # Add current gradient to cumulative gradient
-                #         cumulative_gradients[name] += param.grad.detach().cpu().numpy()
 
                 if scheduler is not None:
                     scheduler.step()
@@ -172,35 +164,15 @@ def trainer_irg(model,args,accelerator,train_dataloader,dev_dataloader,test_data
 
             if writer!=None:
                 writer.add_scalar('training/train_loss',loss,global_step)
-        
-        # if epoch == args.num_train_epochs - 1:  # Save at the end of the last epoch
-        #     # Option 2: Save to CSV file (if feasible)
-        #     # Flattening gradients for CSV is more complex and depends on your specific needs
-        #     # This example assumes you can serialize gradients as strings or handle them appropriately
-        #     gradient_data = {
-        #         "id": all_ids,
-        #         "gradients": [json.dumps({k: v for k, v in batch.items()}) for batch in all_gradients]
-        #     }
-        #     df = pd.DataFrame(gradient_data)
-        #     csv_file = f"{args.output_dir}/{args.modeltype}_gradients_epoch_{epoch + 1}.csv"
-        #     df.to_csv(csv_file, index=False)
-
-        #     print(f"Saved gradients to {csv_file}")
-
-        # # Save cumulative gradients, probs, and predictions for this epoch
-        # gradient_file = f"{args.output_dir}{args.modeltype}_gradients_{epoch + 1}.json"
-        # probs_file = f"{args.output_dir}{args.modeltype}_probs_{epoch + 1}.json"
-
-        # with open(gradient_file, 'w') as f:
-        #     json.dump({k: v.tolist() for k, v in cumulative_gradients.items()}, f, indent=4)
-
-        # print(f"Saved gradients to {gradient_file}")
 
         if none_count>0:
             print("none_count",none_count)
 
         eval_vals=evaluate_irg(args,device,dev_dataloader,model)
         print(eval_vals)
+        evaluate_irg(args,device,train_dataloader,model)
+        update_weights(args)
+        weights_updated = True
         # for k,v in eval_vals.items():
         #     if k== 'auc_scores':
         #         continue
@@ -239,7 +211,7 @@ def evaluate_irg(args, device, data_loader, model, mode=None):
             label = batch['labels']
             ids = batch['ids']
 
-            proj, probs = model(**input_fields)
+            probs = model(**input_fields)
 
             if probs is None:
                 warnings.warn("probs is None!")
@@ -249,8 +221,6 @@ def evaluate_irg(args, device, data_loader, model, mode=None):
                 continue
             probs = probs.cpu().numpy()
             label = label.cpu().numpy()
-            proj = proj.cpu().numpy()
-            eval_proj += proj.tolist()
             eval_probs += probs.tolist()
             record_probs.extend(probs.tolist())
             eval_labels += label.tolist()
@@ -263,46 +233,43 @@ def evaluate_irg(args, device, data_loader, model, mode=None):
     if none_count>0:
         print("none_count",none_count)
     
-    if mode is not None:
-        all_probs = np.array(record_probs)
-        all_proj = np.stack(eval_proj)
-        all_labels = np.array(eval_labels)
-        all_ids = np.array(eval_ids)
-        
-        # Check if task is binary or multiclass based on the shape of all_probs
-        if all_probs.shape[1] == 1 or len(np.unique(all_labels)) == 2:
-            # Binary classification task
-            predictions = np.where(all_probs > 0.5, 1, 0).flatten()  # Convert to 0 or 1 and flatten array
-        else:
-            # Multiclass classification task
-            predictions = np.argmax(all_probs, axis=1)
-            all_probs = list(map(list, all_probs))
+    #if mode is not None:
+    all_probs = np.array(record_probs)
+    all_labels = np.array(eval_labels)
+    all_ids = np.array(eval_ids)
+    
+    # Check if task is binary or multiclass based on the shape of all_probs
+    if all_probs.shape[1] == 1 or len(np.unique(all_labels)) == 2:
+        # Binary classification task
+        predictions = np.where(all_probs > 0.5, 1, 0).flatten()  # Convert to 0 or 1 and flatten array
+    else:
+        # Multiclass classification task
+        predictions = np.argmax(all_probs, axis=1)
+        all_probs = list(map(list, all_probs))
 
-        # Check if handling a binary classification or multi-label classification
-        if predictions.ndim == 1 or all_labels.shape[1] == 1:
-            # Binary classification, predictions are already 1D
-            results_df = pd.DataFrame({
-                "ids": all_ids,
-                "Predicted": predictions,
-                "Ground_Truth": all_labels,
-                "Probs": all_probs,
-                "Proj": list(map(list, all_proj))
-            })
-        else:
-            # Multi-label classification, convert each row to tuple or string
-            results_df = pd.DataFrame({
-                "ids": all_ids,
-                "Predicted": [tuple(row) for row in predictions],
-                "Ground_Truth": [tuple(row) for row in all_labels],
-                "Probs": all_probs,
-                "Proj": list(map(list, all_proj))
-            })
+    # Check if handling a binary classification or multi-label classification
+    if predictions.ndim == 1 or all_labels.shape[1] == 1:
+        # Binary classification, predictions are already 1D
+        results_df = pd.DataFrame({
+            "ids": all_ids,
+            "Predicted": predictions,
+            "Ground_Truth": all_labels,
+            "Probs": all_probs
+        })
+    else:
+        # Multi-label classification, convert each row to tuple or string
+        results_df = pd.DataFrame({
+            "ids": all_ids,
+            "Predicted": [tuple(row) for row in predictions],
+            "Ground_Truth": [tuple(row) for row in all_labels],
+            "Probs": all_probs
+        })
 
-        # Save to a CSV file
-        #output_file = f"{args.output_dir}/{args.task}_{args.modeltype}_{mode}_results.csv"
-        output_file = f"{args.output_dir}/{args.modeltype}_{mode}_results.csv"
-        results_df.to_csv(output_file, index=False)
-        print(f"Saved test predictions to {output_file}")
+    # Save to a CSV file
+    #output_file = f"{args.output_dir}/{args.task}_{args.modeltype}_{mode}_results.csv"
+    output_file = f"{args.output_dir}/{args.modeltype}_eval_results.csv"
+    results_df.to_csv(output_file, index=False)
+    print(f"Saved test predictions to {output_file}")
     
     eval_vals={}
     all_probs = np.array(eval_probs)
@@ -351,8 +318,32 @@ def evaluate_irg(args, device, data_loader, model, mode=None):
     #     if mode==None:
     #         check_point(eval_vals, model, eval_probs, args,"f1")
 
-    if mode is None:
-        with open(f"{args.output_dir}/eval_vals.json", "w") as f:
-            json.dump(eval_vals.get('f1'), f, indent=4)
-
     return eval_vals
+
+def update_weights(args):
+    datasets = ['train', 'val']
+    old_file_path = args.file_path
+    output_dir = os.path.join(args.file_path, 'new_weights')
+    os.makedirs(output_dir, exist_ok=True)
+    
+    # Update args.file_path to point to the new directory
+    args.file_path = output_dir
+    print(f"Updated file path to: {args.file_path}")
+
+    # Example usage: train_los-48-cxr-notes-ecg_stays.pkl
+    for dataset in datasets:
+        print(f"Starting los {dataset} dataset")
+        ts_pred = pd.read_csv(f'{args.output_dir}/TS_{dataset}_results.csv')
+        print("number of ts_pred: ", len(ts_pred))
+        text_pred = pd.read_csv(f'{args.output_dir}/Text_{dataset}_results.csv')
+        print("number of text_pred: ", len(text_pred))
+        cxr_pred = pd.read_csv(f'{args.output_dir}/CXR_{dataset}_results.csv')
+        print("number of cxr_pred: ", len(cxr_pred))
+        ecg_pred = pd.read_csv(f'{args.output_dir}/ECG_{dataset}_results.csv')
+        print("number of ecg_pred: ", len(ecg_pred))
+        multi_pred = pd.read_csv(f'{args.output_dir}/TS_CXR_Text_ECG_eval_results.csv')
+        print("number of multi_pred: ", len(multi_pred))
+
+        kl_scores = assign_pid_4probs(ts_pred, text_pred, cxr_pred, ecg_pred, multi_pred)
+        # will update the file path in args to /new_weights/
+        new_stays_list = update_stays_with_weights(old_file_path, output_dir, kl_scores, dataset)

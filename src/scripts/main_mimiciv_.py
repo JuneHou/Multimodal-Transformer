@@ -11,6 +11,7 @@ import time
 import sys
 import logging
 import os
+import shutil
 logger = logging.getLogger(__name__)
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
@@ -30,6 +31,9 @@ class Struct(object):
 def main():
     args = parse_args()
     print(args)
+
+    if f"new_weights" in os.listdir(args.file_path):
+        shutil.rmtree(os.path.join(args.file_path, "new_weights"))
 
     # Handling mixed precision setup
     if args.fp16:
@@ -122,7 +126,7 @@ def main():
     accelerator.prepare(model, optimizer, train_dataloader,val_dataloader,test_data_loader)
 
     trainer_irg(model=model,args=args,accelerator=accelerator,train_dataloader=train_dataloader,\
-        dev_dataloader=val_dataloader, test_data_loader=test_data_loader, device=device,\
+        dev_dataloader=val_dataloader, test_data_loader=test_data_loader, tokenizer=tokenizer, device=device,\
         optimizer=optimizer,writer=writer)
     eval_test(args,model,test_data_loader, device, mode='test')
     eval_test(args,model,train_dataloader, device, mode='train')
