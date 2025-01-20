@@ -410,7 +410,8 @@ def assign_4probs(ts_pred, text_pred, cxr_pred, ecg_pred, multi_pred):
 
     return df
 
-def update_stays_with_weights(old_file_path, output_dir, kl_scores, dataset):
+def update_stays_with_weights(old_file_path, output_dir, kl_scores, smooth_factor, dataset):
+    #file_path = f'{old_file_path}/{dataset}_los-48-cxr-notes-ecg-missingInd_stays.pkl'
     file_path = f'{old_file_path}/{dataset}_los-48-cxr-notes-ecg_stays.pkl'
     with open(file_path, 'rb') as file:
         stays_list = pickle.load(file)
@@ -418,9 +419,6 @@ def update_stays_with_weights(old_file_path, output_dir, kl_scores, dataset):
     match_count = 0
 
     for stay in tqdm(stays_list):
-        # Initialize weights to 0 by default
-        for modality in ['ts', 'text', 'cxr', 'ecg']:
-            stay[f'{modality}_weight'] = 0
 
         # Generate ID string
         id_string = f"{int(stay['hadm_id']):08d}{int(stay['stay_id'])}"
@@ -430,10 +428,12 @@ def update_stays_with_weights(old_file_path, output_dir, kl_scores, dataset):
             matching_row = kl_scores[kl_scores['ids'].astype(str) == id_string].iloc[0]
             
             for modality in ['ts', 'text', 'cxr', 'ecg']:
-                if stay.get(f'{modality}_missing', 0) == 0:  # Check if the modality data is not missing
-                    stay[f'{modality}_weight'] = matching_row[f'kl_{modality}']
+                current_weight = stay[f'{modality}_weight']
+                new_weight = matching_row[f'kl_{modality}'] * smooth_factor + current_weight * (1 - smooth_factor)
+                stay[f'{modality}_weight'] = new_weight
             match_count += 1
 
+    #output_path = f'{output_dir}/{dataset}_los-48-cxr-notes-ecg-missingInd_stays.pkl'
     output_path = f'{output_dir}/{dataset}_los-48-cxr-notes-ecg_stays.pkl'
     with open(output_path, 'wb') as file:
         pickle.dump(stays_list, file)

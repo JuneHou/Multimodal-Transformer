@@ -5,12 +5,12 @@ python -W ignore ./src/scripts/main_mimiciv_.py  --num_train_epochs 8  --modelty
                 --gradient_accumulation_steps 16  --num_update_bert_epochs 2 --bertcount 3 \
                 --ts_learning_rate 0.0004 --txt_learning_rate 0.00002 \
                 --notes_order 'Last' --num_of_notes 5 --max_length 1024 --layers 3\
-                --output_dir "/data/wang/junh/results/Fuse_moe/all_los/multiclass/dynamic_pid/" \
+                --output_dir "/data/wang/junh/results/Fuse_moe/all_los/multiclass/dynamic_weighted_missing/" \
                 --embed_dim 128 \
                 --num_modalities 4 \
                 --model_name "bioLongformer"\
-                --task 'los-48-cxr-notes-ecg'\
-                --file_path '/data/wang/junh/datasets/multimodal/multiclass/dynamic_pid/'\
+                --task 'los-48-cxr-notes-ecg-missingInd'\
+                --file_path '/data/wang/junh/datasets/multimodal/multiclass/dynamic_weights_missing/'\
                 --num_labels 4 \
                 --num_heads 8 \
                 --embed_time 64 \

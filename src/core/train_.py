@@ -102,6 +102,9 @@ def trainer_irg(model,args,accelerator,train_dataloader,dev_dataloader,test_data
     global_step=0
     best_evals={}
     weights_updated = False
+    last_f1 = None
+    decay_rate = 0.1
+    smooth_factor = 1
 
     # Check if the file already exists and load previous gradients
     output_file_base = '/data/wang/junh/githubs/Multimodal-Transformer/' + args.modeltype
@@ -170,11 +173,29 @@ def trainer_irg(model,args,accelerator,train_dataloader,dev_dataloader,test_data
 
         eval_vals=evaluate_irg(args,device,dev_dataloader,model, mode='val')
         print(eval_vals)
+        current_f1 = eval_vals.get('f1', 0)
+
         evaluate_irg(args,device,train_dataloader,model, mode='train')
-        
-        #update_kl_weights(args)
-        update_pid_weights(args)
+
+        if last_f1 is not None:
+            f1_delta = current_f1 - last_f1
+            if f1_delta > 0:
+                smooth_factor = min(smooth_factor + decay_rate, 1)  # Cap at 1 to avoid overshooting
+            else:
+                smooth_factor = max(smooth_factor - decay_rate, 0)
+
+        last_f1 = current_f1  # Update last_f1 for the next epoch
+
+        update_kl_weights(args, smooth_factor, ['train', 'val'])
         weights_updated = True
+
+        if epoch==args.num_train_epochs-1:
+            from preprocessing.data_mimiciv_ import data_perpare
+            evaluate_irg(args,device,test_data_loader,model, mode='test')
+            update_kl_weights(args, smooth_factor, ['test'])
+            _, test_data_loader = data_perpare(args, 'test', tokenizer)
+            test_data_loader = accelerator.prepare(test_data_loader)
+            print("Reloaded test dataset")
         # for k,v in eval_vals.items():
         #     if k== 'auc_scores':
         #         continue
@@ -322,8 +343,7 @@ def evaluate_irg(args, device, data_loader, model, mode=None):
 
     return eval_vals
 
-def update_kl_weights(args):
-    datasets = ['train', 'val']
+def update_kl_weights(args,smooth_factor,datasets):
     if not hasattr(args, 'old_file_path'):
         args.old_file_path = args.file_path
 
@@ -338,7 +358,18 @@ def update_kl_weights(args):
 
     # Example usage: train_los-48-cxr-notes-ecg_stays.pkl
     for dataset in datasets:
-        print(f"Starting los {dataset} dataset")
+        # print(f"Starting los {dataset} dataset")
+        # ts_pred = pd.read_csv(f'/data/wang/junh/results/Fuse_moe/all_los/multiclass/missingInd/TS_{dataset}_results.csv')
+        # print("number of ts_pred: ", len(ts_pred))
+        # text_pred = pd.read_csv(f'/data/wang/junh/results/Fuse_moe/all_los/multiclass/missingInd/Text_{dataset}_results.csv')
+        # print("number of text_pred: ", len(text_pred))
+        # cxr_pred = pd.read_csv(f'/data/wang/junh/results/Fuse_moe/all_los/multiclass/missingInd/CXR_{dataset}_results.csv')
+        # print("number of cxr_pred: ", len(cxr_pred))
+        # ecg_pred = pd.read_csv(f'/data/wang/junh/results/Fuse_moe/all_los/multiclass/missingInd/ECG_{dataset}_results.csv')
+        # print("number of ecg_pred: ", len(ecg_pred))
+        # multi_pred = pd.read_csv(f'{args.output_dir}/TS_CXR_Text_ECG_{dataset}_results.csv')
+        # print("number of multi_pred: ", len(multi_pred))
+
         ts_pred = pd.read_csv(f'/data/wang/junh/results/Fuse_moe/all_los/multiclass/TS_{dataset}_results.csv')
         print("number of ts_pred: ", len(ts_pred))
         text_pred = pd.read_csv(f'/data/wang/junh/results/Fuse_moe/all_los/multiclass/Text_{dataset}_results.csv')
@@ -352,4 +383,4 @@ def update_kl_weights(args):
 
         kl_scores = assign_4probs(ts_pred, text_pred, cxr_pred, ecg_pred, multi_pred)
         # will update the file path in args to /new_weights/
-        new_stays_list = update_stays_with_weights(args.old_file_path, output_dir, kl_scores, dataset)
+        new_stays_list = update_stays_with_weights(args.old_file_path, output_dir, kl_scores, smooth_factor, dataset)
