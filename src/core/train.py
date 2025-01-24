@@ -26,14 +26,13 @@ def eval_test(args, model, dataloader, device, mode=None):
     result_dict[seed] = {}
 
     # Load the best model checkpoint for evaluation if not in testing mode
-    if mode in ["train", "val"]:
-        best_model_file = find_best_model_file(rootdir)
-        if best_model_file:
-            print("Loading best model from:", best_model_file)
-            checkpoint = torch.load(best_model_file, map_location=device)
-            model.load_state_dict(checkpoint['network'])
-        else:
-            print("No best model found. Evaluating with the current model state.")
+    best_model_file = find_best_model_file(rootdir)
+    if best_model_file:
+        print("Loading best model from:", best_model_file)
+        checkpoint = torch.load(best_model_file, map_location=device)
+        model.load_state_dict(checkpoint['network'])
+    else:
+        print("No best model found. Evaluating with the current model state.")
 
     # Perform evaluation
     eval_vals = evaluate_irg(args=args, device=device, data_loader=dataloader, model=model, mode=mode)
@@ -50,8 +49,8 @@ def eval_test(args, model, dataloader, device, mode=None):
 
     return result_dict
 
-def find_best_model_file(directory):
-    """Utility to find the best model file based on validation performance."""
+def find_best_model_file(directory, eval_score='f1'):
+    """Utility to find the best model file based on validation performance for a specific eval_score."""
     best_model_file = None
     best_val = float('-inf')
     for file in os.listdir(directory):
@@ -59,11 +58,13 @@ def find_best_model_file(directory):
             file_path = os.path.join(directory, file)
             try:
                 checkpoint = torch.load(file_path)
-                if 'best_val' in checkpoint and checkpoint['best_val']['val'] > best_val:
-                    best_val = checkpoint['best_val']['val']
+                # Fetching the specific eval_score's best value
+                val_metric = checkpoint.get('best_val', {}).get(eval_score)
+                if val_metric and val_metric > best_val:
+                    best_val = val_metric
                     best_model_file = file_path
             except Exception as e:
-                print("Error loading checkpoint:", e)
+                print(f"Error loading checkpoint from {file_path}: {e}")
     return best_model_file
 
 
@@ -259,17 +260,18 @@ def trainer_irg(model,args,accelerator,train_dataloader,dev_dataloader,test_data
 
         eval_vals=evaluate_irg(args,device,dev_dataloader,model)
         print(eval_vals)
-        # for k,v in eval_vals.items():
-        #     if k== 'auc_scores':
-        #         continue
-        #     if writer!=None:
-        #         writer.add_scalar('dev/'+k ,v,epoch+1)
-        #     best_eval=best_evals.get(k, 0)
-        #     if v>best_eval:
-        #         best_eval=v
-        #         best_evals[k]=best_eval
-        #     print("Current "+ k,v)
-        #     print("Best "+ k,best_eval)
+        
+        # Save Best Value
+        k = "f1"
+        v = eval_vals.get(k, 0)
+        print("Current "+ k,v)
+        if writer!=None:
+            writer.add_scalar('dev/'+k ,v,epoch+1)
+        best_eval=best_evals.get(k, 0)
+        if v>best_eval:
+            best_eval=v
+            best_evals[k]=best_eval
+        print("Best "+ k,best_eval)
 
         if writer!=None:
             writer.close()

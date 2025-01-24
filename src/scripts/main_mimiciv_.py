@@ -32,8 +32,8 @@ def main():
     args = parse_args()
     print(args)
 
-    if f"new_weights" in os.listdir(args.file_path):
-        shutil.rmtree(os.path.join(args.file_path, "new_weights"))
+    if f'new_weights/{args.modeltype}' in os.listdir(args.file_path):
+        shutil.rmtree(os.path.join(args.file_path, f'new_weights/{args.modeltype}'))
 
     # Handling mixed precision setup
     if args.fp16:

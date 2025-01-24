@@ -19,10 +19,11 @@ import pandas as pd
 from itertools import combinations
 from numpy import dot
 from numpy.linalg import norm
-from scipy.stats import entropy
+from scipy.stats import entropy, pearsonr
 from sklearn.metrics import mutual_info_score
 from ast import literal_eval
 from tqdm import tqdm
+from scipy.special import rel_entr
 
 from transformers import (AutoTokenizer,
                           AutoModel,
@@ -160,6 +161,7 @@ def parse_args():
     parser.add_argument("--num_modalities", default=2, type=int, help="the number of input modalities used to train transformer")
     parser.add_argument("--use_pt_text_embeddings", action='store_true', help="Option to use pre-extracted text embeddings")
     parser.add_argument("--router_type", default='joint', type=str, help="all router types: joint, permod, disjoint")
+    parser.add_argument("--missingInd", action='store_true', help="Option to use missing indicator for TS data")
     args = parser.parse_args()
     return args
 
@@ -377,6 +379,12 @@ def split_ids(id_string, n=8):
     stay_id = int(id_string[8:])   # Convert remaining part to int
     return hadm_id, stay_id
 
+def jsd(p, q):
+    # Calculate the average distribution m
+    m = 0.5 * (p + q)
+    # Calculate the JSD using the definition
+    return 0.5 * (np.sum(rel_entr(p, m)) + np.sum(rel_entr(q, m)))
+
 def assign_4probs(ts_pred, text_pred, cxr_pred, ecg_pred, multi_pred):
     # Merge predictions
     df = ts_pred[['ids', 'Probs']].rename(columns={'Probs': 'ts'})
@@ -397,6 +405,7 @@ def assign_4probs(ts_pred, text_pred, cxr_pred, ecg_pred, multi_pred):
     # Calculate KL divergence where data is available
     for modality in modalities[:-1]:
         df[f'kl_{modality}'] = df.apply(lambda row: entropy(row[modality], row['Multi']) if np.sum(row[modality]) != 0 else 0, axis=1)
+        #df[f'kl_{modality}'] = df.apply(lambda row: jsd(row[modality], row['Multi']) if np.sum(row[modality]) != 0 else 0, axis=1)
 
     # Normalize KL divergence scores across the dataset
     for modality in modalities[:-1]:
@@ -410,9 +419,49 @@ def assign_4probs(ts_pred, text_pred, cxr_pred, ecg_pred, multi_pred):
 
     return df
 
+def assign_4probs_bilevel(ts_pred, text_pred, cxr_pred, ecg_pred, multi_pred):
+    # Merge predictions
+    df = ts_pred[['ids', 'Probs', 'Predicted']].rename(columns={'Probs': 'ts'})
+    df = df.merge(text_pred[['ids', 'Probs', 'Predicted']], on='ids', how='left').rename(columns={'Probs': 'text'})
+    df = df.merge(cxr_pred[['ids', 'Probs', 'Predicted']], on='ids', how='left').rename(columns={'Probs': 'cxr'})
+    df = df.merge(ecg_pred[['ids', 'Probs', 'Predicted']], on='ids', how='left').rename(columns={'Probs': 'ecg'})
+    df = df.merge(multi_pred[['ids', 'Probs', 'Predicted']], on='ids', how='left').rename(columns={'Probs': 'Multi'}).dropna()
+
+    # Convert probability strings to arrays
+    modalities = ['ts', 'text', 'cxr', 'ecg', 'Multi']
+    for col in modalities:
+        df[col] = df[col].apply(lambda x: np.array(literal_eval(x)) if pd.notnull(x) else np.array([0]*4))  # Assuming 4 classes
+
+    # Calculate correlation weights
+    correlation_weights = {}
+    for modality in modalities[:-1]:  # Exclude 'Multi'
+        modality_probs = df.apply(lambda row: row[modality][row['Predicted']], axis=1)
+        multi_probs = df.apply(lambda row: row['Multi'][row['Predicted']], axis=1)
+        correlation_weights[modality] = pearsonr(modality_probs, multi_probs)[0] if not np.isnan(pearsonr(modality_probs, multi_probs)[0]) else 0
+
+    # Calculate KL divergence where data is available
+    for modality in modalities[:-1]:
+        df[f'kl_{modality}'] = df.apply(lambda row: entropy(row[modality], row['Multi']) if np.sum(row[modality]) != 0 else 0, axis=1)
+
+    # Normalize and weight KL divergence scores across the dataset
+    for modality in modalities[:-1]:
+        max_kl = df[f'kl_{modality}'].max()
+        min_kl = df[f'kl_{modality}'].min()
+        range_kl = max_kl - min_kl
+        if range_kl > 0:
+            df[f'kl_{modality}'] = (df[f'kl_{modality}'] - min_kl) / range_kl * correlation_weights[modality]
+        else:
+            df[f'kl_{modality}'] = 0  # Avoid division by zero if all values are the same
+
+    return df
+
 def update_stays_with_weights(old_file_path, output_dir, kl_scores, smooth_factor, dataset):
-    #file_path = f'{old_file_path}/{dataset}_los-48-cxr-notes-ecg-missingInd_stays.pkl'
-    file_path = f'{old_file_path}/{dataset}_los-48-cxr-notes-ecg_stays.pkl'
+    if args.missingInd:
+        file_path = f'{old_file_path}/{dataset}_los-48-cxr-notes-ecg-missingInd_stays.pkl'
+    else:
+        file_path = f'{old_file_path}/{dataset}_los-48-cxr-notes-ecg_stays.pkl'
+    print("-"*50)
+    print("Loading stays from", file_path)
     with open(file_path, 'rb') as file:
         stays_list = pickle.load(file)
 
@@ -433,10 +482,14 @@ def update_stays_with_weights(old_file_path, output_dir, kl_scores, smooth_facto
                 stay[f'{modality}_weight'] = new_weight
             match_count += 1
 
-    #output_path = f'{output_dir}/{dataset}_los-48-cxr-notes-ecg-missingInd_stays.pkl'
-    output_path = f'{output_dir}/{dataset}_los-48-cxr-notes-ecg_stays.pkl'
+    if args.missingInd:
+        output_path = f'{output_dir}/{dataset}_los-48-cxr-notes-ecg-missingInd_stays.pkl'
+    else:
+        output_path = f'{output_dir}/{dataset}_los-48-cxr-notes-ecg_stays.pkl'
     with open(output_path, 'wb') as file:
         pickle.dump(stays_list, file)
 
     print(f"Updated and saved {output_path}")
-    print(f"Matched {match_count} out of {len(stays_list)} records in {output_path}")
+    print(f"Matched {match_count} out of {len(stays_list)} records ")
+    print(f"Saved in {output_path}")
+    print("-"*50)

@@ -76,6 +76,7 @@ def check_point(all_val, model, all_logits, args, eval_score=None):
             'best_val': all_val,
             'args': args
         }, checkpoint_path)
+        print(f"New checkpoint saved at {checkpoint_path}")
     else:
         print("No new checkpoint saved. Current checkpoint is better or equal.")
 

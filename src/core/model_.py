@@ -122,7 +122,7 @@ class TextModel(nn.Module):
                 # Use a multiclass classification approach for LOS
                 # Assuming output has the correct shape (batch_size, num_classes)
                 return self.loss_fct1(output, labels)
-            return torch.nn.functional.softmax(output, dim=-1)
+            return last_hs_proj, torch.nn.functional.softmax(output, dim=-1)
 
         elif 'pheno' in self.task:
             if labels!=None:
@@ -563,7 +563,7 @@ class MULTCrossModel(nn.Module):
                 # Use a multiclass classification approach for LOS
                 # Assuming output has the correct shape (batch_size, num_classes)
                 return self.loss_fct1(output, labels), torch.nn.functional.softmax(output, dim=-1)
-            return torch.nn.functional.softmax(output, dim=-1)
+            return last_hs_proj, torch.nn.functional.softmax(output, dim=-1)
 
         elif 'pheno' in self.task:
             if labels!=None:
@@ -796,7 +796,7 @@ class TSMixed(nn.Module):
                     return self.loss_fct1(output, labels), torch.nn.functional.softmax(output, dim=-1)
             else:
                 # If labels are None, return the projection and the softmax probabilities for all classes
-                return torch.nn.functional.softmax(output, dim=-1)
+                return last_hs_proj, torch.nn.functional.softmax(output, dim=-1)
 
         elif 'pheno' in self.task:
             if labels!=None:
@@ -977,7 +977,7 @@ class TextMoE(nn.Module):
                 # Use a multiclass classification approach for LOS
                 # Assuming output has the correct shape (batch_size, num_classes)
                 return self.loss_fct1(output, labels), torch.nn.functional.softmax(output, dim=-1)
-            return torch.nn.functional.softmax(output, dim=-1)
+            return last_hs_proj, torch.nn.functional.softmax(output, dim=-1)
 
         elif 'pheno' in self.task:
             if labels!=None:
@@ -1146,7 +1146,7 @@ class CXRMoE(nn.Module):
                 # Use a multiclass classification approach for LOS
                 # Assuming output has the correct shape (batch_size, num_classes)
                 return self.loss_fct1(output, labels), torch.nn.functional.softmax(output, dim=-1)
-            return torch.nn.functional.softmax(output, dim=-1)
+            return last_hs_proj, torch.nn.functional.softmax(output, dim=-1)
 
         elif 'pheno' in self.task:
             if labels!=None:
@@ -1317,7 +1317,7 @@ class ECGMoE(nn.Module):
                 # Use a multiclass classification approach for LOS
                 # Assuming output has the correct shape (batch_size, num_classes)
                 return self.loss_fct1(output, labels), torch.nn.functional.softmax(output, dim=-1)
-            return torch.nn.functional.softmax(output, dim=-1)
+            return last_hs_proj, torch.nn.functional.softmax(output, dim=-1)
 
         elif 'pheno' in self.task:
             if labels!=None:
