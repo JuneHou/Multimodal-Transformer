@@ -421,23 +421,25 @@ def assign_4probs(ts_pred, text_pred, cxr_pred, ecg_pred, multi_pred):
 
 def assign_4probs_bilevel(ts_pred, text_pred, cxr_pred, ecg_pred, multi_pred):
     # Merge predictions
-    df = ts_pred[['ids', 'Probs', 'Predicted']].rename(columns={'Probs': 'ts'})
-    df = df.merge(text_pred[['ids', 'Probs', 'Predicted']], on='ids', how='left').rename(columns={'Probs': 'text'})
-    df = df.merge(cxr_pred[['ids', 'Probs', 'Predicted']], on='ids', how='left').rename(columns={'Probs': 'cxr'})
-    df = df.merge(ecg_pred[['ids', 'Probs', 'Predicted']], on='ids', how='left').rename(columns={'Probs': 'ecg'})
-    df = df.merge(multi_pred[['ids', 'Probs', 'Predicted']], on='ids', how='left').rename(columns={'Probs': 'Multi'}).dropna()
+    df = ts_pred[['ids', 'Probs']].rename(columns={'Probs': 'ts'})
+    df = df.merge(text_pred[['ids', 'Probs']], on='ids', how='left').rename(columns={'Probs': 'text'})
+    df = df.merge(cxr_pred[['ids', 'Probs']], on='ids', how='left').rename(columns={'Probs': 'cxr'})
+    df = df.merge(ecg_pred[['ids', 'Probs']], on='ids', how='left').rename(columns={'Probs': 'ecg'})
+    df = df.merge(multi_pred[['ids', 'Probs']], on='ids', how='left').rename(columns={'Probs': 'Multi'}).dropna()
 
     # Convert probability strings to arrays
     modalities = ['ts', 'text', 'cxr', 'ecg', 'Multi']
     for col in modalities:
         df[col] = df[col].apply(lambda x: np.array(literal_eval(x)) if pd.notnull(x) else np.array([0]*4))  # Assuming 4 classes
 
+    # Calculate maximum probabilities for each row and modality
+    for modality in modalities:
+        df[f'max_{modality}'] = df[modality].apply(lambda x: np.max(x))
+
     # Calculate correlation weights
     correlation_weights = {}
     for modality in modalities[:-1]:  # Exclude 'Multi'
-        modality_probs = df.apply(lambda row: row[modality][row['Predicted']], axis=1)
-        multi_probs = df.apply(lambda row: row['Multi'][row['Predicted']], axis=1)
-        correlation_weights[modality] = pearsonr(modality_probs, multi_probs)[0] if not np.isnan(pearsonr(modality_probs, multi_probs)[0]) else 0
+        correlation_weights[modality] = pearsonr(df[f'max_{modality}'], df['max_Multi'])[0] if not np.isnan(pearsonr(df[f'max_{modality}'], df['max_Multi'])[0]) else 0
 
     # Calculate KL divergence where data is available
     for modality in modalities[:-1]:
@@ -455,7 +457,7 @@ def assign_4probs_bilevel(ts_pred, text_pred, cxr_pred, ecg_pred, multi_pred):
 
     return df
 
-def update_stays_with_weights(old_file_path, output_dir, kl_scores, smooth_factor, dataset):
+def update_stays_with_weights(args, old_file_path, output_dir, kl_scores, smooth_factor, dataset):
     if args.missingInd:
         file_path = f'{old_file_path}/{dataset}_los-48-cxr-notes-ecg-missingInd_stays.pkl'
     else:

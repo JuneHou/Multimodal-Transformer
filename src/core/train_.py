@@ -105,7 +105,7 @@ def trainer_irg(model,args,accelerator,train_dataloader,dev_dataloader,test_data
     best_evals={}
     weights_updated = False
     last_f1 = None
-    decay_rate = 0.05
+    decay_rate = 0.1
     smooth_factor = 0.5
 
     # Check if the file already exists and load previous gradients
@@ -386,7 +386,7 @@ def update_kl_weights(args,epoch,smooth_factor,datasets):
             print("number of cxr_pred: ", len(cxr_pred))
             ecg_pred = pd.read_csv(f'/data/wang/junh/results/Fuse_moe/all_los/multiclass/missingInd/ECG_{dataset}_results.csv')
             print("number of ecg_pred: ", len(ecg_pred))
-            multi_pred = pd.read_csv(f'{args.output_dir}/TS_CXR_Text_ECG_{dataset}_results.csv')
+            multi_pred = pd.read_csv(f'{args.output_dir}/{args.modeltype}_{dataset}_results.csv')
             print("number of multi_pred: ", len(multi_pred))
         else:
             ts_pred = pd.read_csv(f'/data/wang/junh/results/Fuse_moe/all_los/multiclass/TS_{dataset}_results.csv')
@@ -397,12 +397,13 @@ def update_kl_weights(args,epoch,smooth_factor,datasets):
             print("number of cxr_pred: ", len(cxr_pred))
             ecg_pred = pd.read_csv(f'/data/wang/junh/results/Fuse_moe/all_los/multiclass/ECG_{dataset}_results.csv')
             print("number of ecg_pred: ", len(ecg_pred))
-            multi_pred = pd.read_csv(f'{args.output_dir}/TS_CXR_Text_ECG_{dataset}_results.csv')
+            multi_pred = pd.read_csv(f'{args.output_dir}/{args.modeltype}_{dataset}_results.csv')
             print("number of multi_pred: ", len(multi_pred))
 
-        kl_scores = assign_4probs(ts_pred, text_pred, cxr_pred, ecg_pred, multi_pred)
+        # assign_4probs_bilevel, assign_4probs
+        kl_scores = assign_4probs_bilevel(ts_pred, text_pred, cxr_pred, ecg_pred, multi_pred)
         # will update the file path in args to /new_weights/
         if epoch==0 or dataset=='test':
-            new_stays_list = update_stays_with_weights(args.old_file_path, output_dir, kl_scores, smooth_factor, dataset)
+            new_stays_list = update_stays_with_weights(args, args.old_file_path, output_dir, kl_scores, smooth_factor, dataset)
         else:
-            new_stays_list = update_stays_with_weights(output_dir, output_dir, kl_scores, smooth_factor, dataset)
+            new_stays_list = update_stays_with_weights(args, output_dir, output_dir, kl_scores, smooth_factor, dataset)
