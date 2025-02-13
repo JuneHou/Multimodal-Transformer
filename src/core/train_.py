@@ -5,6 +5,7 @@ from sklearn.metrics import  roc_auc_score, precision_recall_curve,  auc, f1_sco
 from collections import defaultdict
 import pandas as pd
 import warnings 
+import json
 
 
 def eval_test(args, model, dataloader, device, mode=None):
@@ -229,6 +230,7 @@ def evaluate_irg(args, device, data_loader, model, mode=None):
     eval_ids = []
     eval_proj = []
     eval_probs = []
+    eval_routing_log = []
     record_probs = []
     eval_labels = []
     none_count=0
@@ -245,7 +247,7 @@ def evaluate_irg(args, device, data_loader, model, mode=None):
             label = batch['labels']
             ids = batch['ids']
 
-            proj, probs = model(**input_fields)
+            proj, routing_log, probs = model(**input_fields)
 
             if probs is None:
                 warnings.warn("probs is None!")
@@ -261,6 +263,14 @@ def evaluate_irg(args, device, data_loader, model, mode=None):
             record_probs.extend(probs.tolist())
             eval_labels += label.tolist()
             eval_ids += ids
+
+            for log_entry in routing_log:
+                layer_id, modality, indices = log_entry
+                eval_routing_log.append({
+                    "layer_id": layer_id,
+                    "modality": modality,
+                    "indices": indices  # Assuming indices is a list that doesn't need further unpacking
+                })
         # Optional: Aggregate attention weights post-evaluation of the batch
         # Can also be done only at the end of an epoch or the complete evaluation
         # attention_weights = model.aggregate_attention_weights()
@@ -303,12 +313,18 @@ def evaluate_irg(args, device, data_loader, model, mode=None):
             "Probs": all_probs,
             "Proj": list(map(list, all_proj))
         })
+    
+    #routing_df = pd.DataFrame(eval_routing_log)
 
     # Save to a CSV file
     #output_file = f"{args.output_dir}/{args.task}_{args.modeltype}_{mode}_results.csv"
     output_file = f"{args.output_dir}/{args.modeltype}_{mode}_results.csv"
     results_df.to_csv(output_file, index=False)
     print(f"Saved test predictions to {output_file}")
+
+    # routing_file = f"{args.output_dir}/{args.modeltype}_{mode}_routing.csv"
+    # routing_df.to_csv(routing_file, index=False)
+    # print(f"Saved test routing to {routing_file}")
     
     eval_vals={}
     all_probs = np.array(eval_probs)

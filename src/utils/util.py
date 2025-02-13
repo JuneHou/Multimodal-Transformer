@@ -7,6 +7,7 @@ import pickle
 import re
 import numpy as np
 import json
+from datetime import datetime
 from preprocessing.data import *
 import statistics as stat
 logger = None
@@ -495,3 +496,8 @@ def update_stays_with_weights(args, old_file_path, output_dir, kl_scores, smooth
     print(f"Matched {match_count} out of {len(stays_list)} records ")
     print(f"Saved in {output_path}")
     print("-"*50)
+
+def log_json(layer_id, modality, routing, filename=f"moe_routing_{datetime.now().strftime('%Y%m%d_%H%M%S')}.json"):
+    data = {'layer_id': layer_id, 'modality': modality, 'routing': routing}
+    with open(filename, mode='a') as file:
+        file.write(json.dumps(data) + '\n')

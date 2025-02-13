@@ -9,6 +9,7 @@ from torch import nn
 from torch.nn import Parameter
 import torch.nn.functional as F
 from utils.config import MoEConfig
+from utils.util import log_json
 from core.sparse_moe import MoE
 from core.hme import HierarchicalMoE
 import sys
@@ -518,16 +519,21 @@ class TransformerCrossEncoder(nn.Module):
               # Add positional embedding
             x_list = [F.dropout(x, p=self.dropout, training=self.training) for x in x_list]
         # encoder layers
+        layer_id=1
+        layer_routing_log = []
         for layer in self.layers:
-            x_list = layer(x_list, modality) #proj_x_txt, proj_x_ts
+            x_list = layer(x_list, modality, layer_id)[0] #proj_x_txt, proj_x_ts
+            routing_log = layer(x_list, modality, layer_id)[1]
             # len(x_list) = 2
             # x_list[0].shape = torch.Size([48, 1, 128])
+            layer_id+=1
+            layer_routing_log.extend(routing_log)
             if x_list is None:
                 return None
 
         if self.normalize:
             x_list=[l(x) for l, x in zip(self.layer_norm, x_list)]
-        return x_list
+        return x_list, layer_routing_log
 
 
 class TransformerCrossEncoderLayer(nn.Module):
@@ -600,7 +606,7 @@ class TransformerCrossEncoderLayer(nn.Module):
             self.moe = HierarchicalMoE(moe_config)
             self.moe = self.moe.to(device)
         
-    def forward(self, x_list, modality):
+    def forward(self, x_list, modality, layer_id):
         """
         Args:
             x (List of Tensor): input to the layer of shape `(seq_len, batch, embed_dim)`
@@ -633,11 +639,18 @@ class TransformerCrossEncoderLayer(nn.Module):
             if torch.isnan(embeddings).any():
                 return None
             # just replace this with hierarchical moe
-            moe_out, balance_loss = self.moe(x_mod_in, modalities=modality)
+            moe_out, balance_loss, routing_info = self.moe(x_mod_in, modalities=modality)
+            # moe_out shape = torch.Size([2, 24576]) = batch, combined weighted experts outputs
             x_mod_out = [moe_out[:, embd_len_list[i]:embd_len_list[i + 1]] for i in range(len(embd_len_list) - 1)]
+            # x_mod_out shape = len 4 list of [2, 6144] = [4 of [2, 48*128]]
             x_allmod_output = [torch.reshape(x, (seq_len, bs, -1)) for x in x_mod_out]
+            # reshape each element in length 4 list to [48, 2, 128]
             moe_output = [F.dropout(x, p=self.res_dropout, training=self.training) for x in x_allmod_output]
             x_list = [r + x for r, x in zip(residual, moe_output)]
+
+            routing_log = []
+            for idx, mod in routing_info:
+                routing_log.append([layer_id, mod, idx.detach().cpu().tolist()])
 
         # pay attention to how the text and patch embeddings are concated in LIMOE
         # LIMOE just concat? add modality type embeddings
@@ -660,7 +673,8 @@ class TransformerCrossEncoderLayer(nn.Module):
         x_list = [l(x) for l, x in zip(self.fc2, x_list)]
         x_list = [F.dropout(x, p=self.res_dropout, training=self.training) for x in x_list]
         x_list = [r + x  for r, x in zip(residual, x_list) ]
-        return x_list
+
+        return x_list, routing_log
 
 
 class TransformerEncoderLayer(nn.Module):

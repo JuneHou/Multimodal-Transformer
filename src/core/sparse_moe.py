@@ -128,7 +128,9 @@ class SparseDispatcher(object):
 class MLP(nn.Module):
     def __init__(self, config:MoEConfig, input_size:int, output_size:int, hidden_size:int):
         super(MLP, self).__init__()
+        # input size = 6144 = 48*128
         self.fc1 = nn.Linear(input_size, hidden_size)
+        # output size = 24576 = 4 * 6144
         self.fc2 = nn.Linear(hidden_size, output_size)
         self.dropout = nn.Dropout(config.dropout)
         self.activation = ACT2FN[config.hidden_act]
@@ -309,7 +311,7 @@ class MoE(nn.Module):
             load = (self._prob_in_top_k(clean_logits, noisy_logits, noise_stddev, top_logits)).sum(0)
         else:
             load = self._gates_to_load(gates)
-        return gates, load
+        return gates, load, top_k_indices
 
     def noisy_top_k_gating(self, x, train, noise_epsilon=1e-2, modalities=None):
         """Multimodal noisy top-k gating.
@@ -333,17 +335,18 @@ class MoE(nn.Module):
             gates, load = self._top_k_gating(logits, clean_logits, noisy_logits, noise_stddev, self.k)
             return gates, load
         else:
-            all_gates, all_loads = [], []
+            all_gates, all_loads, all_indices = [], [], []
             for i in range(self.num_modalities):
                 all_logits = self._get_logits(x[i], train, noise_epsilon, idx=i)
                 logits, clean_logits, noisy_logits, noise_stddev = all_logits[0], all_logits[1], all_logits[2], all_logits[3]
                 if self.router_type == 'permod':
-                    gates, load = self._top_k_gating(logits, clean_logits, noisy_logits, noise_stddev, self.k)
+                    gates, load, top_k_indices = self._top_k_gating(logits, clean_logits, noisy_logits, noise_stddev, self.k)
                 else:
-                    gates, load = self._top_k_gating(logits, clean_logits, noisy_logits, noise_stddev, self.disjoint_k)
+                    gates, load, top_k_indices = self._top_k_gating(logits, clean_logits, noisy_logits, noise_stddev, self.disjoint_k)
                 all_gates.append(gates)
                 all_loads.append(load)
-            return all_gates, all_loads
+                all_indices.append(top_k_indices)
+            return all_gates, all_loads, all_indices
 
     def forward(self, x, train=True, loss_coef=1e-2, modalities=None):
         """Args:
@@ -357,7 +360,9 @@ class MoE(nn.Module):
         training loss of the model.  The backpropagation of this loss
         encourages all experts to be approximately equally used across a batch.
         """
-        gates, load = self.noisy_top_k_gating(x, train, modalities=modalities)
+        gates, load, top_k_indices = self.noisy_top_k_gating(x, train, modalities=modalities)
+        #for idx, mod in zip(top_k_indices, modalities):
+            #print(f"Inputs from modality {mod} are routed to experts {idx.tolist()}")  # Use a proper logging system instead of print
         # calculate importance loss
         if isinstance(gates, list):
             loss, y, sub_experts = 0, 0, self.num_experts//self.num_modalities
@@ -380,4 +385,4 @@ class MoE(nn.Module):
             # gates = dispatcher.expert_to_gates() # how is this line be used?
             expert_outputs = [self.experts[i](expert_inputs[i]) for i in range(self.num_experts)]
             y = dispatcher.combine(expert_outputs)
-        return y, loss
+        return y, loss, zip(top_k_indices, modalities)
