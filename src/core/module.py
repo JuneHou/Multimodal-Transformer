@@ -130,6 +130,7 @@ class TimeSeriesCnnModel(nn.Module):
 
 class multiTimeAttention(nn.Module):
     "mTAND module"
+    # nhidden takes the value of d_{modality} which is embed_dim
     def __init__(self, input_dim, nhidden=16,
                  embed_time=16, num_heads=1):
         super(multiTimeAttention, self).__init__()

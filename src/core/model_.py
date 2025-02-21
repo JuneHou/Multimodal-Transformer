@@ -499,20 +499,16 @@ class MULTCrossModel(nn.Module):
             proj_names = []
 
             if "TS" in self.modeltype:
-                #proj_lists.append(proj_x_ts*ts_weight)
-                proj_lists.append(proj_x_ts)
+                proj_lists.append(proj_x_ts*ts_weight)
                 proj_names.append('ts')
             if "CXR" in self.modeltype:
-                #proj_lists.append(proj_x_cxr*cxr_weight)
-                proj_lists.append(proj_x_cxr)
+                proj_lists.append(proj_x_cxr*cxr_weight)
                 proj_names.append('cxr')
             if "Text" in self.modeltype:
-                #proj_lists.append(proj_x_txt*text_weight)
-                proj_lists.append(proj_x_txt)
+                proj_lists.append(proj_x_txt*text_weight)
                 proj_names.append('txt')
             if "ECG" in self.modeltype:
-                #proj_lists.append(proj_x_ecg*ecg_weight)
-                proj_lists.append(proj_x_ecg)
+                proj_lists.append(proj_x_ecg*ecg_weight)
                 proj_names.append('ecg')
             
             hiddens, routing_log = self.trans_self_cross_ts_txt(proj_lists, proj_names)
@@ -520,20 +516,9 @@ class MULTCrossModel(nn.Module):
 
             if hiddens is None:
                 return None
-
-            # Apply weights to each modality's output before concatenation
-            weighted_hiddens = []
-            modality_weights = [ts_weight, cxr_weight, text_weight, ecg_weight]
-            for hid, weight in zip(hiddens, modality_weights):
-                # Ensure weights are correctly shaped and broadcastable
-                # Assume each weight is shaped as [1, batch_size, 1]
-                weighted_hiddens.append(hid * weight)
-
-            # Concatenate the last timestep of each weighted hidden tensor
-            last_hs = torch.cat([hid[-1] for hid in weighted_hiddens], dim=1)
-            # # h_txt_with_ts, h_ts_with_txt=hiddens
-            # last_hs = torch.cat([hid[-1] for hid in hiddens], dim=1)
-            # # last_hs = torch.cat([h_txt_with_ts[-1], h_ts_with_txt[-1]], dim=1)
+            # h_txt_with_ts, h_ts_with_txt=hiddens
+            last_hs = torch.cat([hid[-1] for hid in hiddens], dim=1)
+            # last_hs = torch.cat([h_txt_with_ts[-1], h_ts_with_txt[-1]], dim=1)
         else:
             # if 'CXR' in self.modeltype:
             #     proj_x_txt = proj_x_cxr
@@ -560,7 +545,6 @@ class MULTCrossModel(nn.Module):
                     last_hs = torch.cat([proj_x_txt[-1],proj_x_ts[-1]], dim=1)
 
         last_hs_proj = self.proj2(F.dropout(F.relu(self.proj1(last_hs)), p=self.dropout, training=self.training))
-        # last_hs_proj shape is torch.Size([2, 512])
         last_hs_proj += last_hs
         output = self.out_layer(last_hs_proj)
 
