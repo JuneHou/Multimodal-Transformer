@@ -221,7 +221,7 @@ class MULTCrossModel(nn.Module):
             else:
                 self.proj_ecg = nn.Conv1d(self.orig_d_ecg, self.d_ecg, kernel_size=self.kernel_size, padding=math.floor((self.kernel_size -1) / 2), bias=False)
         
-        self.cl_loss = NTXentLoss(temperature=0.5, device=args.device)
+        self.cl_loss = NTXentLoss(temperature=0.5, device=device)
         self.pretraining_mode = True
 
         output_dim = args.num_labels
