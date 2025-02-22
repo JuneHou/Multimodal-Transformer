@@ -142,6 +142,24 @@ def trainer_irg(model,args,accelerator,train_dataloader,dev_dataloader,test_data
             for param in model.bertrep.parameters():
                 print(epoch,param.requires_grad)
                 break
+        
+        # Add pretraining epochs with input_fields['mode'] = 'pretrain'
+        for step, batch in tqdm(enumerate(train_dataloader)):
+            input_fields, _ = batch_input_fields(batch, args.modeltype)
+            input_fields['mode'] = 'pretrain'
+            embeddings = model(**input_fields)  # this should return embeddings from different modalities
+
+            # Assuming embeddings is a list of modalities embeddings [embed_ts, embed_txt, embed_cxr, embed_ecg]
+            # Compute contrastive loss between TS and each other modality
+            if len(embeddings) > 1:
+                ts_embeddings = embeddings[0]  # Assuming TS embeddings are always first
+                loss = 0
+                for embed in embeddings[1:]:  # Iterate over other modalities
+                    loss += model.contrastive_loss(ts_embeddings, embed)
+
+                loss.backward()  # Backpropagate the total contrastive loss
+                optimizer.step()
+                optimizer.zero_grad()
 
         none_count=0
         for step, batch in tqdm(enumerate(train_dataloader)):
@@ -151,6 +169,7 @@ def trainer_irg(model,args,accelerator,train_dataloader,dev_dataloader,test_data
             global_step+=1
 
             input_fields, _ = batch_input_fields(batch, args.modeltype)
+            input_fields['mode'] = 'train'
 
             loss, probs = model(**input_fields)
 
@@ -243,6 +262,7 @@ def evaluate_irg(args, device, data_loader, model, mode=None):
         with torch.no_grad():
 
             input_fields, batch = batch_input_fields(batch, args.modeltype, train=False)
+            input_fields['mode'] = 'eval'
 
             label = batch['labels']
             ids = batch['ids']

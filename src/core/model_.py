@@ -5,6 +5,7 @@ import sys
 import math
 from core.module import *
 from core.interp import *
+from core.simpleCLR import *
 import copy
 import pdb
 
@@ -220,16 +221,9 @@ class MULTCrossModel(nn.Module):
             else:
                 self.proj_ecg = nn.Conv1d(self.orig_d_ecg, self.d_ecg, kernel_size=self.kernel_size, padding=math.floor((self.kernel_size -1) / 2), bias=False)
         
-        if "Notes" in self.modeltype:
-            self.orig_d_note = 768
-            self.d_note = args.embed_dim
-            self.note_seq_num = 5
+        self.cl_loss = NTXentLoss(temperature=0.5, device=args.device)
+        self.pretraining_mode = True
 
-            if self.irregular_learn_emb_note:
-                self.time_attn_note = multiTimeAttention(768, self.d_note, args.embed_time, 8)
-            else:
-                self.proj_note = nn.Conv1d(self.orig_d_note, self.d_note, kernel_size=self.kernel_size, padding=math.floor((self.kernel_size -1) / 2), bias=False)
-        
         output_dim = args.num_labels
         # if self.modeltype=="TS_Text":
         if self.cross_method in ["self_cross", "moe", "hme"]:
@@ -365,7 +359,8 @@ class MULTCrossModel(nn.Module):
     def forward(self, x_ts, x_ts_mask, ts_tt_list, cxr_missing=None, text_missing=None, ecg_missing=None, note_missing = None, input_ids_sequences=None,
                 attn_mask_sequences=None, text_emb=None, note_time_list=None, note_time_mask_list=None, note_embed=None,
                 labels=None, reg_ts=None, cxr_feats=None, cxr_time=None, cxr_time_mask=None, ecg_feats=None,
-                ecg_time=None, ecg_time_mask=None, ts_weight=None, text_weight=None, cxr_weight=None, ecg_weight=None):
+                ecg_time=None, ecg_time_mask=None, ts_weight=None, text_weight=None, cxr_weight=None, ecg_weight=None,
+                mode='pretrain'):
         """
         dimension [batch_size, seq_len, n_features]
 
@@ -487,6 +482,10 @@ class MULTCrossModel(nn.Module):
                 proj_x_ecg[:, non_missing, :] += self.token_type_embeddings(torch.ones((self.args.tt_max, len(non_missing)), dtype=torch.long, device=x_ts.device))
                 proj_x_ecg[:, missing_indices, :] = torch.zeros((self.args.tt_max, len(missing_indices), self.args.embed_dim), dtype=torch.float16, device=x_ts.device)
             mod_count += 1
+
+        if mode == 'pretrain':
+            outputs = [proj_x_ts, proj_x_txt, proj_x_cxr, proj_x_ecg]
+            return outputs
 
         ts_weight = ts_weight.unsqueeze(-1).unsqueeze(0)
         text_weight = text_weight.unsqueeze(-1).unsqueeze(0)    
