@@ -28,6 +28,8 @@ def data_perpare(args,mode,tokenizer,data=None):
     if mode=='train':
         #sampler = RandomSampler(dataset)
         dataloader= DataLoader(dataset, shuffle=True, batch_size=args.train_batch_size, collate_fn=TextTSIrgcollate_fn, drop_last=True)
+    elif mode=='pretrain':
+        dataloader= DataLoader(dataset, shuffle=True, batch_size=args.pretrain_batch_size, collate_fn=TextTSIrgcollate_fn, drop_last=True)
     else:
         sampler = SequentialSampler(dataset)
         dataloader= DataLoader(dataset, sampler=sampler, batch_size=args.eval_batch_size, collate_fn=TextTSIrgcollate_fn, drop_last=True)
@@ -309,6 +311,8 @@ def load_data(file_path, mode, debug=False, text=False, task='ihm'):
     Returns:
         data: The loaded data.
     """
+    if mode == 'pretrain':
+        mode = 'train'
     dataPath = os.path.join(file_path, mode + '_' + task + '_stays.pkl')
     if os.path.isfile(dataPath):
         print('Using', dataPath)

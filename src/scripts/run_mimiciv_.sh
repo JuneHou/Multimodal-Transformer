@@ -1,8 +1,8 @@
 export CUDA_VISIBLE_DEVICES="3" 
 
 python -W ignore ./src/scripts/main_mimiciv_.py  --num_train_epochs 8  --modeltype 'TS_CXR_Text_ECG' \
-                --kernel_size 1 --train_batch_size 2 --eval_batch_size 8 --seed 42 \
-                --gradient_accumulation_steps 16  --num_update_bert_epochs 2 --bertcount 3 \
+                --kernel_size 1 --train_batch_size 2 --eval_batch_size 8 --pretrain_batch_size 32 --seed 42 \
+                --num_pretrain_epochs 50 --gradient_accumulation_steps 16  --num_update_bert_epochs 2 --bertcount 3 \
                 --ts_learning_rate 0.0004 --txt_learning_rate 0.00002 \
                 --notes_order 'Last' --num_of_notes 5 --max_length 1024 --layers 3\
                 --output_dir "/data/wang/junh/results/Fuse_moe/all_los/multiclass/dynamic_test/" \
@@ -10,7 +10,7 @@ python -W ignore ./src/scripts/main_mimiciv_.py  --num_train_epochs 8  --modelty
                 --num_modalities 4 \
                 --model_name "bioLongformer"\
                 --task 'los-48-cxr-notes-ecg'\
-                --file_path '/data/wang/junh/datasets/multimodal/multiclass/dynamic_weights_test/'\
+                --file_path '/data/wang/junh/datasets/multimodal/multiclass/dynamic_bilevel/'\
                 --num_labels 4 \
                 --num_heads 8 \
                 --embed_time 64 \

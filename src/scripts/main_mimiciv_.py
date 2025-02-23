@@ -86,6 +86,7 @@ def main():
         train_dataset, train_dataloader = data_perpare(args, 'train', tokenizer)
         val_dataset, val_dataloader = data_perpare(args, 'val', tokenizer)
         _, test_data_loader = data_perpare(args,'test',tokenizer)
+        pretrain_dataset, pretrain_dataloader = data_perpare(args, 'pretrain', tokenizer)
 
     if args.modeltype == 'Text':
         # pure text
@@ -122,11 +123,12 @@ def main():
     else:
         raise ValueError("Unknown modeltype in optimizer.")
 
-    model, optimizer, train_dataloader,val_dataloader,test_data_loader = \
-    accelerator.prepare(model, optimizer, train_dataloader,val_dataloader,test_data_loader)
+    model, optimizer, train_dataloader,val_dataloader,test_data_loader, pretrain_dataloader = \
+    accelerator.prepare(model, optimizer, train_dataloader,val_dataloader,test_data_loader, pretrain_dataloader)
 
     trainer_irg(model=model,args=args,accelerator=accelerator,train_dataloader=train_dataloader,\
-        dev_dataloader=val_dataloader, test_data_loader=test_data_loader, tokenizer=tokenizer, device=device,\
+        dev_dataloader=val_dataloader, test_data_loader=test_data_loader, pretrain_dataloader=pretrain_dataloader, 
+        tokenizer=tokenizer, device=device,\
         optimizer=optimizer,writer=writer)
     eval_test(args,model,test_data_loader, device, mode='test')
     eval_test(args,model,train_dataloader, device, mode='train')

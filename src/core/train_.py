@@ -100,14 +100,14 @@ def batch_input_fields(batch, model_type, train=True):
         
 
 
-def trainer_irg(model,args,accelerator,train_dataloader,dev_dataloader,test_data_loader,tokenizer,device,optimizer,pretrain_epoch=None,writer=None,scheduler=None):
+def trainer_irg(model,args,accelerator,train_dataloader,dev_dataloader,test_data_loader, pretrain_dataloader, tokenizer,device,optimizer,pretrain_epoch=None,writer=None,scheduler=None):
     
-    for epoch in tqdm(range(args.num_train_epochs)):
-        optimizer = torch.optim.Adam(model.parameters(), lr=0.001)
+    for epoch in tqdm(range(args.num_pretrain_epochs)):
+        pretrain_optimizer = torch.optim.Adam(model.parameters(), lr=0.001)
         count=0
         model.train()
         if "Text" in args.modeltype:
-            if args.num_update_bert_epochs<args.num_train_epochs and (epoch)%args.num_update_bert_epochs==0 and count<args.bertcount:
+            if args.num_update_bert_epochs<args.num_pretrain_epochs and (epoch)%args.num_update_bert_epochs==0 and count<args.bertcount:
                 count+=1
                 print("bert update at epoch "+ str(epoch) )
                 for param in model.bertrep.parameters():
@@ -123,26 +123,18 @@ def trainer_irg(model,args,accelerator,train_dataloader,dev_dataloader,test_data
         epoch_loss = 0
         
         # Add pretraining epochs with input_fields['mode'] = 'pretrain'
-        for step, batch in tqdm(enumerate(train_dataloader)):
+        for step, batch in tqdm(enumerate(pretrain_dataloader)):
             input_fields, _ = batch_input_fields(batch, args.modeltype)
             input_fields['mode'] = 'pretrain'
-            embeddings = model(**input_fields)  # this should return embeddings from different modalities
-            # Average the embeddings across the sequence dimension
-            flat_embeddings = [embed.mean(dim=1) for embed in embeddings]  # embeddings is list of [48, 2, 128] for each modality
+            embeddings = model(**input_fields)  #[proj_x_ts, proj_x_txt, proj_x_cxr, proj_x_ecg]
 
-            # Assuming embeddings is a list of modalities embeddings [embed_ts, embed_txt, embed_cxr, embed_ecg]
-            # Compute contrastive loss between TS and each other modality
-            if len(embeddings) > 1:
-                ts_embeddings = flat_embeddings[0]
-                loss = 0
-                for embed in flat_embeddings[1:]:  # Compare TS with each other modality
-                    loss += model.cl_loss(ts_embeddings, embed)
+            loss = model.cl_loss(embeddings)  # Calculate the contrastive loss
 
-                loss.backward()  # Backpropagate the total contrastive loss
-                optimizer.step()
-                optimizer.zero_grad()  # Clear gradients after updating weights
+            loss.backward()  # Backpropagate the total contrastive loss
+            pretrain_optimizer.step()
+            pretrain_optimizer.zero_grad()  # Clear gradients after updating weights
 
-                epoch_loss += loss.item()
+            epoch_loss += loss.item()
 
         print(f"Epoch {epoch} Loss: {epoch_loss}")
         # How to reshape back to [48, 2, 128] for each modality?
@@ -152,7 +144,7 @@ def trainer_irg(model,args,accelerator,train_dataloader,dev_dataloader,test_data
     best_evals={}
     weights_updated = False
     last_f1 = None
-    decay_rate = 0.1
+    decay_rate = 0.05
     smooth_factor = 0.5
 
     # Check if the file already exists and load previous gradients

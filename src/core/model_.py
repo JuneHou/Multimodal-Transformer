@@ -221,8 +221,7 @@ class MULTCrossModel(nn.Module):
             else:
                 self.proj_ecg = nn.Conv1d(self.orig_d_ecg, self.d_ecg, kernel_size=self.kernel_size, padding=math.floor((self.kernel_size -1) / 2), bias=False)
         
-        self.cl_loss = NTXentLoss(temperature=0.5, device=device)
-        self.pretraining_mode = True
+        self.cl_loss = SimCLR(num_mod=args.num_modalities, batch_size=args.pretrain_batch_size,device=device)
 
         output_dim = args.num_labels
         # if self.modeltype=="TS_Text":
@@ -484,7 +483,15 @@ class MULTCrossModel(nn.Module):
             mod_count += 1
 
         if mode == 'pretrain':
-            outputs = [proj_x_ts, proj_x_txt, proj_x_cxr, proj_x_ecg]
+            outputs = []
+            if "TS" in self.modeltype:
+                outputs.append(proj_x_ts)
+            if "Text" in self.modeltype:
+                outputs.append(proj_x_txt)
+            if "CXR" in self.modeltype:
+                outputs.append(proj_x_cxr)
+            if "ECG" in self.modeltype:
+                outputs.append(proj_x_ecg)
             return outputs
 
         ts_weight = ts_weight.unsqueeze(-1).unsqueeze(0)

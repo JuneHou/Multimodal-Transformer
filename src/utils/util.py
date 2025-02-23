@@ -75,8 +75,14 @@ def parse_args():
         default=32,
         help="Batch size for the evaluation dataloader.",
     )
+    parser.add_argument(
+        "--pretrain_batch_size",
+        type=int,
+        default=8,
+    )
     parser.add_argument("--num_update_bert_epochs", type=int, default=10, help="Number of per training epochs update the bert model.")
     parser.add_argument("--num_train_epochs", type=int, default=10, help="Total number of training epochs to perform.")
+    parser.add_argument("--num_pretrain_epochs", type=int, default=30, help="Total number of pretraining epochs to perform.")
 
     parser.add_argument(
         "--txt_learning_rate",
