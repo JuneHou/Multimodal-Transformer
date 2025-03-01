@@ -70,11 +70,59 @@ class SimCLR(nn.Module):
         logits = logits / self.temperature
 
         loss = self.criterion(logits, labels)
+        if torch.isnan(loss):
+            print("Loss is NaN")
         return loss
 
 
 
+class SimCLR_pair(nn.Module):
+    def __init__(self, num_mod=4, tt_max=48, batch_size=8, embed_dim=128, hidden_dim=4096, 
+                 output_dim=128, temperature=0.05, device='cuda'):
+        super(SimCLR_pair, self).__init__()
+        self.device = device
+        self.num_mod = num_mod  # Total number of modalities including TS
+        self.tt_max = tt_max
+        self.batch_size = batch_size
+        self.embed_dim = embed_dim
+        self.hidden_dim = hidden_dim
+        self.output_dim = output_dim
+        self.temperature = temperature
+        self.criterion = torch.nn.CrossEntropyLoss().to(self.device)
+        self.proj_head = MLP(embed_dim * tt_max, output_dim, hidden_dim).to(self.device)
 
+    def forward(self, embeddings, txt_missing, cxr_missing, ecg_missing):
+        # embeddings: list of tensors for each modality, each tensor of shape [batch_size, tt_max, embed_dim]
+        # Each tensor is projected, e.g., proj_x_ts for TS
+        # missing flags for each modality except TS which is always present
+        
+        ts_embeddings = embeddings[0]  # TS embeddings are always present
+        ts_embeddings = ts_embeddings.reshape(self.batch_size, self.tt_max * self.embed_dim)
+        ts_embeddings = self.proj_head(ts_embeddings)
+        ts_embeddings = F.normalize(ts_embeddings, dim=1)
+
+        losses = []
+        presence_flags = [not txt_missing, not cxr_missing, not ecg_missing]  # Convert missing flags to presence flags
+
+        for i, present in enumerate(presence_flags, start=1):  # start=1 to skip TS
+            if present and i < len(embeddings):
+                other_embeddings = embeddings[i]
+                other_embeddings = other_embeddings.reshape(self.batch_size, self.tt_max * self.embed_dim)
+                other_embeddings = self.proj_head(other_embeddings)
+                other_embeddings = F.normalize(other_embeddings, dim=1)
+
+                # Compute similarity matrix for the current modality pair (TS and other)
+                similarity_matrix = torch.matmul(ts_embeddings, other_embeddings.T) / self.temperature
+
+                # Create labels for the positive pairs
+                labels = torch.arange(self.batch_size, device=self.device)
+                loss = self.criterion(similarity_matrix, labels)
+                losses.append(loss)
+
+        # Normalize the total loss by the number of valid modality pairs computed
+        total_loss = sum(losses) / len(losses) if losses else torch.tensor(0.0, device=self.device)
+
+        return total_loss
 
 
 class NTXentLoss(nn.Module):

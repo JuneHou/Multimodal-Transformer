@@ -493,6 +493,7 @@ class MULTCrossModel(nn.Module):
             if "ECG" in self.modeltype:
                 outputs.append(proj_x_ecg)
             return outputs
+            #return outputs, text_missing, cxr_missing, ecg_missing
 
         ts_weight = ts_weight.unsqueeze(-1).unsqueeze(0)
         text_weight = text_weight.unsqueeze(-1).unsqueeze(0)    

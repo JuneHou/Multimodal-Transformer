@@ -105,9 +105,10 @@ def trainer_irg(model,args,accelerator,train_dataloader,dev_dataloader,test_data
     for epoch in tqdm(range(args.num_pretrain_epochs)):
         pretrain_optimizer = torch.optim.Adam(model.parameters(), lr=0.001)
         count=0
+        num_update_bert = 8
         model.train()
         if "Text" in args.modeltype:
-            if args.num_update_bert_epochs<args.num_pretrain_epochs and (epoch)%args.num_update_bert_epochs==0 and count<args.bertcount:
+            if num_update_bert<args.num_pretrain_epochs and (epoch)%num_update_bert==0 and count<args.bertcount:
                 count+=1
                 print("bert update at epoch "+ str(epoch) )
                 for param in model.bertrep.parameters():
