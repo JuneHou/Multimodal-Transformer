@@ -34,7 +34,7 @@ class SimCLR(nn.Module):
         self.criterion = torch.nn.CrossEntropyLoss().to(self.device)
         self.proj_head = MLP(embed_dim*tt_max, output_dim, hidden_dim).to(self.device)
 
-    def forward(self, x):
+    def forward(self, x, missings):
         # x: [proj_ts_x, proj_txt_x, proj_cxr_x, proj_ecg_x], each of shape [tt_max, batch_size, embed_dim]
 
         for i in range(self.num_mod):
@@ -42,21 +42,91 @@ class SimCLR(nn.Module):
             x[i] = x[i].reshape(self.batch_size, self.tt_max*self.embed_dim)
 
         x = torch.cat(x, dim=0)
+        if torch.any(torch.isnan(x)):
+            print("Loss is NaN")
         x = self.proj_head(x) # [batch_size*num_mod, output_dim]
+
+        norm_loss = 0
+        # soft norm
+        # norm_loss = 0.01 * F.relu(x.norm(dim=1) - 2.0).mean()
+        # norm
+        # norm_loss = 0.001 * x.norm(dim=1, p=2).mean()
+
 
         # https://github.com/sthalles/SimCLR/blob/master/simclr.py
         labels = torch.cat([torch.arange(self.batch_size) for i in range(self.num_mod)], dim=0)
         labels = (labels.unsqueeze(0) == labels.unsqueeze(1)).float()
         labels = labels.to(self.device)
-
+        if torch.any(torch.isnan(x)):
+            print("Loss is NaN")
+        
+        missing_mask = torch.zeros(self.batch_size*self.num_mod, dtype=torch.bool).to(self.device)
+        for i, missing in enumerate(missings):
+            missing_mask[(i+1)*self.batch_size:(i+2)*self.batch_size] = missing
+        x = x * (~missing_mask).unsqueeze(1) + missing_mask.unsqueeze(1)*1e-7
+        
         x = F.normalize(x, dim=1)
+
+        if torch.any(torch.isnan(x)):
+            print("Loss is NaN")
 
         similarity_matrix = torch.matmul(x, x.T)
 
         # discard the main diagonal from both: labels and similarities matrix
+        # Mask examples, assume batch_size = 4, num_mod = 2, mod 2 of sample 2 is missing from batch
+        # Reglar mask:         Mask with missing modality:
+        # |1 0 0 0 0 0 0 0|    |1 0 0 0 0 0 0 0|
+        # |0 1 0 0 0 0 0 0|    |0 1 0 0 0 0 0 0|
+        # |0 0 1 0 0 0 0 0|    |0 0 1 0 0 0 0 0|
+        # |0 0 0 1 0 0 0 0|    |1 1 1 1 1 1 1 1|
+        # |0 0 0 0 1 0 0 0|    |0 0 0 0 1 0 0 0|
+        # |0 0 0 0 0 1 0 0|    |0 0 0 0 0 1 0 0|
+        # |0 0 0 0 0 0 1 0|    |0 0 0 0 0 0 1 0|
+        # |0 0 0 0 0 0 0 1|    |0 0 0 0 0 0 0 1|
+
+        # Label equality mask
+        # |1 0 0 0 1 0 0 0|
+        # |0 1 0 0 0 1 0 0|
+        # |0 0 1 0 0 0 1 0|
+        # |0 0 0 1 0 0 0 1|
+        # |1 0 0 0 1 0 0 0|
+        # |0 1 0 0 0 1 0 0|
+        # |0 0 1 0 0 0 1 0|
+        # |0 0 0 1 0 0 0 1|
+
+        # Mask examples, assume batch_size = 2, num_mod = 4, mod 2 of sample 2 is missing from batch
+        # Reglar mask:         Mask with missing modality:
+        # |1 0 0 0 0 0 0 0|    |1 0 0 0 0 0 0 0|
+        # |0 1 0 0 0 0 0 0|    |0 1 0 0 0 0 0 0|
+        # |0 0 1 0 0 0 0 0|    |0 0 1 0 0 0 0 0|
+        # |0 0 0 1 0 0 0 0|    |0 0 0 1 0 0 0 0|
+        # |0 0 0 0 1 0 0 0|    |0 0 0 0 1 0 0 0|
+        # |0 0 0 0 0 1 0 0|    |1 1 1 1 1 1 1 1|
+        # |0 0 0 0 0 0 1 0|    |0 0 0 0 0 0 1 0|
+        # |0 0 0 0 0 0 0 1|    |0 0 0 0 0 0 0 1|
+
+        # Label equality mask
+        # |1 0 1 0 1 0 1 0|
+        # |0 1 0 1 0 1 0 1|
+        # |1 0 1 0 1 0 1 0|
+        # |0 1 0 1 0 1 0 1|
+        # |1 0 1 0 1 0 1 0|
+        # |0 1 0 1 0 1 0 1|
+        # |1 0 1 0 1 0 1 0|
+        # |0 1 0 1 0 1 0 1|
+
         mask = torch.eye(labels.shape[0], dtype=torch.bool).to(self.device)
-        labels = labels[~mask].view(labels.shape[0], -1)
-        similarity_matrix = similarity_matrix[~mask].view(similarity_matrix.shape[0], -1)
+        # add missing modality mask
+        # missing_mask = torch.zeros(self.batch_size*self.num_mod, dtype=torch.bool).to(self.device)
+        # for i, missing in enumerate(missings):
+        #     missing_mask[(i+1)*self.batch_size:(i+2)*self.batch_size] = missing
+        mask = mask + missing_mask.unsqueeze(1)
+
+        total_missing = torch.sum(missing_mask)
+
+        labels = labels[~mask].view(labels.shape[0] - total_missing, -1)
+        # similarity_matrix = similarity_matrix*(~missing_mask) + missing_mask*1e-7
+        similarity_matrix = similarity_matrix[~mask].view(similarity_matrix.shape[0] - total_missing, -1)
 
         # select and combine multiple positives
         positives = similarity_matrix[labels.bool()].view(labels.shape[0], -1)
@@ -65,14 +135,17 @@ class SimCLR(nn.Module):
         negatives = similarity_matrix[~labels.bool()].view(similarity_matrix.shape[0], -1)
 
         logits = torch.cat([positives, negatives], dim=1)
+        logits = logits[8:]
         labels = torch.zeros(logits.shape[0], dtype=torch.long).to(self.device)
+
+        # logits = logits + torch.ones_like(logits).to(self.device) * 1e-7
 
         logits = logits / self.temperature
 
         loss = self.criterion(logits, labels)
         if torch.isnan(loss):
             print("Loss is NaN")
-        return loss
+        return loss + norm_loss
 
 
 

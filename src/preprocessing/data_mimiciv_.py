@@ -286,11 +286,11 @@ class TSNote_Irg(Dataset):
         if 'Text' in self.modeltype:
             data_items.update({'input_ids': text_token, 'attention_mask': atten_mask, 
                             'text_embeddings': text_emb, 'note_time': text_time_to_end, 
-                            'text_time_mask': text_time_mask})
+                            'text_time_mask': text_time_mask, 'text_missing': data_detail['text_missing']})
         if 'CXR' in self.modeltype:
-            data_items.update({'cxr_feats': cxr_feats, 'cxr_time': cxr_time_to_end, 'cxr_time_mask': cxr_time_mask})
+            data_items.update({'cxr_feats': cxr_feats, 'cxr_time': cxr_time_to_end, 'cxr_time_mask': cxr_time_mask, 'cxr_missing': data_detail['cxr_missing']})
         if 'ECG' in self.modeltype:
-            data_items.update({'ecg_feats': ecg_feats, 'ecg_time': ecg_time_to_end, 'ecg_time_mask': ecg_time_mask})
+            data_items.update({'ecg_feats': ecg_feats, 'ecg_time': ecg_time_to_end, 'ecg_time_mask': ecg_time_mask, 'ecg_missing': data_detail['ecg_missing']})
 
         return data_items
 

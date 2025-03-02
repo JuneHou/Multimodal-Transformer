@@ -103,7 +103,7 @@ def batch_input_fields(batch, model_type, train=True):
 def trainer_irg(model,args,accelerator,train_dataloader,dev_dataloader,test_data_loader, pretrain_dataloader, tokenizer,device,optimizer,pretrain_epoch=None,writer=None,scheduler=None):
     
     for epoch in tqdm(range(args.num_pretrain_epochs)):
-        pretrain_optimizer = torch.optim.Adam(model.parameters(), lr=0.001)
+        pretrain_optimizer = torch.optim.Adam(model.parameters(), lr=0.005, weight_decay=0.0001)
         count=0
         num_update_bert = 8
         model.train()
@@ -128,10 +128,12 @@ def trainer_irg(model,args,accelerator,train_dataloader,dev_dataloader,test_data
             input_fields, _ = batch_input_fields(batch, args.modeltype)
             input_fields['mode'] = 'pretrain'
             embeddings = model(**input_fields)  #[proj_x_ts, proj_x_txt, proj_x_cxr, proj_x_ecg]
+            missings = [input_fields['text_missing'], input_fields['cxr_missing'], input_fields['ecg_missing']]
 
-            loss = model.cl_loss(embeddings)  # Calculate the contrastive loss
+            loss = model.cl_loss(embeddings, missings)  # Calculate the contrastive loss
 
             loss.backward()  # Backpropagate the total contrastive loss
+            # torch.nn.utils.clip_grad_norm_(model.parameters(), max_norm=1.0)
             pretrain_optimizer.step()
             pretrain_optimizer.zero_grad()  # Clear gradients after updating weights
 

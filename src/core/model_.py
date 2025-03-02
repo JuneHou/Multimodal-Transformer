@@ -405,7 +405,11 @@ class MULTCrossModel(nn.Module):
                     proj_x_ts=proj_x_ts_reg
                 else:
                     raise ValueError("Unknown time series type")
+            if torch.any(torch.isnan(proj_x_ts)):
+                print('proj_ts', torch.isnan(proj_x_ts).any())
             proj_x_ts += self.token_type_embeddings(torch.zeros((self.args.tt_max, x_ts.shape[0]), dtype=torch.long, device=x_ts.device))
+            if torch.any(torch.isnan(proj_x_ts)):
+                print('proj_ts', torch.isnan(proj_x_ts).any())
 
         mod_count = 1
         if "Text" in self.modeltype:
