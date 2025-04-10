@@ -22,9 +22,12 @@ from numpy import dot
 from numpy.linalg import norm
 from scipy.stats import entropy, pearsonr
 from sklearn.metrics import mutual_info_score
+from sklearn.feature_selection import mutual_info_regression
+
 from ast import literal_eval
 from tqdm import tqdm
 from scipy.special import rel_entr
+import csv
 
 from transformers import (AutoTokenizer,
                           AutoModel,
@@ -426,7 +429,18 @@ def assign_4probs(ts_pred, text_pred, cxr_pred, ecg_pred, multi_pred):
 
     return df
 
-def assign_4probs_bilevel(ts_pred, text_pred, cxr_pred, ecg_pred, multi_pred):
+def assign_4probs_bilevel(ts_pred, text_pred, cxr_pred, ecg_pred, multi_pred, epoch, args):
+    """
+    Calculates KL divergence weights and correlation coefficients, ensuring KL divergence remains non-negative.
+    
+    Args:
+        ts_pred, text_pred, cxr_pred, ecg_pred, multi_pred: DataFrames containing `ids` and `Probs` columns.
+        epoch (int): The current epoch number.
+
+    Returns:
+        df (DataFrame): Updated DataFrame with KL divergence and correlation weight columns.
+    """
+    MIN_WEIGHT = 0.0001
     # Merge predictions
     df = ts_pred[['ids', 'Probs']].rename(columns={'Probs': 'ts'})
     df = df.merge(text_pred[['ids', 'Probs']], on='ids', how='left').rename(columns={'Probs': 'text'})
@@ -434,33 +448,82 @@ def assign_4probs_bilevel(ts_pred, text_pred, cxr_pred, ecg_pred, multi_pred):
     df = df.merge(ecg_pred[['ids', 'Probs']], on='ids', how='left').rename(columns={'Probs': 'ecg'})
     df = df.merge(multi_pred[['ids', 'Probs']], on='ids', how='left').rename(columns={'Probs': 'Multi'}).dropna()
 
-    # Convert probability strings to arrays
+    # Define modalities
     modalities = ['ts', 'text', 'cxr', 'ecg', 'Multi']
+
+    # Convert probability strings to arrays and normalize
     for col in modalities:
-        df[col] = df[col].apply(lambda x: np.array(literal_eval(x)) if pd.notnull(x) else np.array([0]*4))  # Assuming 4 classes
+        df[col] = df[col].apply(lambda x: np.array(literal_eval(x)) if pd.notnull(x) else np.zeros(4))  # Assuming 4 classes
+        df[col] = df[col].apply(lambda x: x / np.sum(x) if np.sum(x) > 0 else np.zeros_like(x))  # Ensure valid probability distribution
 
     # Calculate maximum probabilities for each row and modality
     for modality in modalities:
         df[f'max_{modality}'] = df[modality].apply(lambda x: np.max(x))
 
-    # Calculate correlation weights
+
+
+    # Compute KL divergence, ensuring values remain non-negative
+    for modality in modalities[:-1]:
+        df[f'kl_{modality}'] = df.apply(
+            lambda row: max(entropy(row[modality], row['Multi']), 0) if np.sum(row[modality]) > 0 and np.sum(row['Multi']) > 0 else 0,
+            axis=1
+        )
+        # Min-Max Normalization
+        min_kl = df[f'kl_{modality}'].min()
+        max_kl = df[f'kl_{modality}'].max()
+        
+        if max_kl - min_kl > 0:  # Avoid division by zero
+            df[f'kl_{modality}'] = (df[f'kl_{modality}'] - min_kl) / (max_kl - min_kl)
+        else:
+            df[f'kl_{modality}'] = 0.0001 
+
+    # Compute correlation weights
     correlation_weights = {}
     for modality in modalities[:-1]:  # Exclude 'Multi'
-        correlation_weights[modality] = pearsonr(df[f'max_{modality}'], df['max_Multi'])[0] if not np.isnan(pearsonr(df[f'max_{modality}'], df['max_Multi'])[0]) else 0
+        corr_coeff, _ = pearsonr(df[f'max_{modality}'], df['max_Multi'])
+        correlation_weights[modality] = max(MIN_WEIGHT, corr_coeff)  # Ensure correlation weight is non-negative
 
-    # Calculate KL divergence where data is available
-    for modality in modalities[:-1]:
-        df[f'kl_{modality}'] = df.apply(lambda row: entropy(row[modality], row['Multi']) if np.sum(row[modality]) != 0 else 0, axis=1)
+    # Compute mutual information weights
+    mutual_weights = {}
+    for modality in modalities[:-1]:  # Exclude 'Multi'
+        mi_score = mutual_info_regression(df[f'max_{modality}'].values.reshape(-1, 1), df['max_Multi'])
+        mutual_weights[modality] = max(MIN_WEIGHT, mi_score[0])
 
-    # Normalize and weight KL divergence scores across the dataset
+    # Normalize KL divergence with safety check
     for modality in modalities[:-1]:
-        max_kl = df[f'kl_{modality}'].max()
-        min_kl = df[f'kl_{modality}'].min()
-        range_kl = max_kl - min_kl
-        if range_kl > 0:
-            df[f'kl_{modality}'] = (df[f'kl_{modality}'] - min_kl) / range_kl * correlation_weights[modality]
-        else:
-            df[f'kl_{modality}'] = 0  # Avoid division by zero if all values are the same
+        #df[f'kl_{modality}'] = (df[f'kl_{modality}']) * correlation_weights[modality]
+        #df[f'kl_{modality}'] = (df[f'kl_{modality}']) * mutual_weights[modality]
+        df[f'kl_{modality}'] = mutual_weights[modality]
+
+    if args.missingInd:
+        LOG_FILE = f"{args.output_dir}/Missing_{args.modeltype}_{epoch}_weights_log.csv"
+    else:
+        LOG_FILE = f"{args.output_dir}/{args.modeltype}_{epoch}_weights_log.csv"
+
+    # Create DataFrame for logging
+    log_data = []
+    for modality in modalities[:-1]:
+        corr_weight = correlation_weights[modality]
+        mutual_weight = mutual_weights[modality]
+
+        for _, row in df.iterrows():
+            kl_value = row[f'kl_{modality}']
+            log_data.append([
+                epoch,
+                modality,
+                corr_weight,
+                mutual_weight,
+                kl_value
+            ])
+
+    df_log = pd.DataFrame(log_data, columns=["epoch", "modality", "correlation_weight", "mutual_weight", "kl_divergence"])
+
+    # Append to CSV
+    if os.path.exists(LOG_FILE):
+        df_log.to_csv(LOG_FILE, mode='a', header=False, index=False)
+    else:
+        df_log.to_csv(LOG_FILE, mode='w', header=True, index=False)
+
 
     return df
 

@@ -27,21 +27,25 @@ def eval_test(args, model, dataloader, device, mode=None):
     result_dict[seed] = {}
 
     # Load the best model checkpoint for evaluation
-    best_model_file = find_best_model_file(rootdir)
+    best_model_file = os.path.join(rootdir, f"42.pth.tar")
+    checkpoint = None
     if best_model_file:
         print("Loading best model from:", best_model_file)
         checkpoint = torch.load(best_model_file, map_location=device)
         model.load_state_dict(checkpoint['network'])
     else:
-        print("No best model found. Evaluating with the current model state.")
+        if mode == "test":
+            raise FileNotFoundError(f"No best checkpoint found in {rootdir}. Run validation first to save a model.")
 
     # Perform evaluation
     eval_vals = evaluate_irg(args=args, device=device, data_loader=dataloader, model=model, mode=mode)
     for eval_type, val in eval_vals.items():
         result_dict[seed][eval_type] = {}
         result_dict[seed][eval_type][mode] = val
-        if mode in ["train", "val"]:
-            result_dict[seed][eval_type]['best_val'] = checkpoint['best_val'][eval_type] if best_model_file else None
+        # if mode in ["train", "val"]:
+        #     result_dict[seed][eval_type]['best_val'] = checkpoint['best_val'][eval_type] if best_model_file else None
+        # else:
+        #     result_dict[seed][eval_type]['best_val'] = None
 
     # Save results to a pickle file if in test mode
     if mode == "test":
@@ -100,45 +104,45 @@ def batch_input_fields(batch, model_type, train=True):
         
 
 
-def trainer_irg(model,args,accelerator,train_dataloader,dev_dataloader,test_data_loader, pretrain_dataloader, tokenizer,device,optimizer,pretrain_epoch=None,writer=None,scheduler=None):
+def trainer_irg(model,args,accelerator,train_dataloader,dev_dataloader,test_data_loader, tokenizer,device,optimizer,pretrain_epoch=None,writer=None,scheduler=None):
     
-    for epoch in tqdm(range(args.num_pretrain_epochs)):
-        pretrain_optimizer = torch.optim.Adam(model.parameters(), lr=0.001)
-        count=0
-        num_update_bert = 8
-        model.train()
-        if "Text" in args.modeltype:
-            if num_update_bert<args.num_pretrain_epochs and (epoch)%num_update_bert==0 and count<args.bertcount:
-                count+=1
-                print("bert update at epoch "+ str(epoch) )
-                for param in model.bertrep.parameters():
-                        param.requires_grad = True
-            else:
-                for param in model.bertrep.parameters():
-                    param.requires_grad = False
+    # for epoch in tqdm(range(args.num_pretrain_epochs)):
+    #     pretrain_optimizer = torch.optim.Adam(model.parameters(), lr=0.001)
+    #     count=0
+    #     num_update_bert = 8
+    #     model.train()
+    #     if "Text" in args.modeltype:
+    #         if num_update_bert<args.num_pretrain_epochs and (epoch)%num_update_bert==0 and count<args.bertcount:
+    #             count+=1
+    #             print("bert update at epoch "+ str(epoch) )
+    #             for param in model.bertrep.parameters():
+    #                     param.requires_grad = True
+    #         else:
+    #             for param in model.bertrep.parameters():
+    #                 param.requires_grad = False
 
-            for param in model.bertrep.parameters():
-                print(epoch,param.requires_grad)
-                break
+    #         for param in model.bertrep.parameters():
+    #             print(epoch,param.requires_grad)
+    #             break
 
-        epoch_loss = 0
+    #     epoch_loss = 0
         
-        # Add pretraining epochs with input_fields['mode'] = 'pretrain'
-        for step, batch in tqdm(enumerate(pretrain_dataloader)):
-            input_fields, _ = batch_input_fields(batch, args.modeltype)
-            input_fields['mode'] = 'pretrain'
-            embeddings = model(**input_fields)  #[proj_x_ts, proj_x_txt, proj_x_cxr, proj_x_ecg]
+    #     # Add pretraining epochs with input_fields['mode'] = 'pretrain'
+    #     for step, batch in tqdm(enumerate(pretrain_dataloader)):
+    #         input_fields, _ = batch_input_fields(batch, args.modeltype)
+    #         input_fields['mode'] = 'pretrain'
+    #         embeddings = model(**input_fields)  #[proj_x_ts, proj_x_txt, proj_x_cxr, proj_x_ecg]
 
-            loss = model.cl_loss(embeddings)  # Calculate the contrastive loss
+    #         loss = model.cl_loss(embeddings)  # Calculate the contrastive loss
 
-            loss.backward()  # Backpropagate the total contrastive loss
-            pretrain_optimizer.step()
-            pretrain_optimizer.zero_grad()  # Clear gradients after updating weights
+    #         loss.backward()  # Backpropagate the total contrastive loss
+    #         pretrain_optimizer.step()
+    #         pretrain_optimizer.zero_grad()  # Clear gradients after updating weights
 
-            epoch_loss += loss.item()
+    #         epoch_loss += loss.item()
 
-        print(f"Epoch {epoch} Loss: {epoch_loss}")
-        # How to reshape back to [48, 2, 128] for each modality?
+    #     print(f"Epoch {epoch} Loss: {epoch_loss}")
+    #     # How to reshape back to [48, 2, 128] for each modality?
     
     count=0
     global_step=0
@@ -457,7 +461,7 @@ def update_kl_weights(args,epoch,smooth_factor,datasets):
             print("number of multi_pred: ", len(multi_pred))
 
         # assign_4probs_bilevel, assign_4probs
-        kl_scores = assign_4probs_bilevel(ts_pred, text_pred, cxr_pred, ecg_pred, multi_pred)
+        kl_scores = assign_4probs_bilevel(ts_pred, text_pred, cxr_pred, ecg_pred, multi_pred, epoch, args)
         # will update the file path in args to /new_weights/
         if epoch==0 or dataset=='test':
             new_stays_list = update_stays_with_weights(args, args.old_file_path, output_dir, kl_scores, smooth_factor, dataset)

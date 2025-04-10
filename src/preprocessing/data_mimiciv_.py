@@ -312,7 +312,8 @@ def load_data(file_path, mode, debug=False, text=False, task='ihm'):
         data: The loaded data.
     """
     if mode == 'pretrain':
-        mode = 'train'
+        task = task.replace('-missingInd', '')
+        dataPath = os.path.join(file_path, mode + '_' + task + '_stays.pkl')
     dataPath = os.path.join(file_path, mode + '_' + task + '_stays.pkl')
     if os.path.isfile(dataPath):
         print('Using', dataPath)
