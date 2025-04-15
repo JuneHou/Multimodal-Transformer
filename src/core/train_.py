@@ -449,7 +449,7 @@ def update_kl_weights(args,epoch,smooth_factor,datasets):
             print("number of cxr_pred: ", len(cxr_pred))
             ecg_pred = pd.read_csv(f'/data/wang/junh/results/Fuse_moe/all_los/multiclass/missingInd/ECG_{dataset}_results.csv')
             print("number of ecg_pred: ", len(ecg_pred))
-            multi_pred = pd.read_csv(f"{args.output_dir}/{args.modeltype}_{mode}_missingInd_results.csv")
+            multi_pred = pd.read_csv(f"{args.output_dir}/{args.modeltype}_{dataset}_missingInd_results.csv")
             print("number of multi_pred: ", len(multi_pred))
         else:
             ts_pred = pd.read_csv(f'/data/wang/junh/results/Fuse_moe/all_los/multiclass/TS_{dataset}_results.csv')

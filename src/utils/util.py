@@ -574,6 +574,16 @@ def assign_4probs_bilevel(ts_pred, text_pred, cxr_pred, ecg_pred, multi_pred, ep
     return df
 
 def update_stays_with_weights(args, old_file_path, output_dir, kl_scores, smooth_factor, dataset):
+    modalities = []
+    if 'TS' in args.modeltype:
+        modalities.append('ts')
+    if 'Text' in args.modeltype:
+        modalities.append('text')
+    if 'CXR' in args.modeltype:
+        modalities.append('cxr')
+    if 'ECG' in args.modeltype:
+        modalities.append('ecg')
+
     if args.missingInd:
         file_path = f'{old_file_path}/{dataset}_los-48-cxr-notes-ecg-missingInd_stays.pkl'
     else:
@@ -594,7 +604,7 @@ def update_stays_with_weights(args, old_file_path, output_dir, kl_scores, smooth
         if id_string in kl_scores['ids'].astype(str).values:
             matching_row = kl_scores[kl_scores['ids'].astype(str) == id_string].iloc[0]
             
-            for modality in ['ts', 'text', 'cxr', 'ecg']:
+            for modality in modalities:
                 current_weight = stay[f'{modality}_weight']
                 new_weight = matching_row[f'kl_{modality}'] * smooth_factor + current_weight * (1 - smooth_factor)
                 stay[f'{modality}_weight'] = new_weight
