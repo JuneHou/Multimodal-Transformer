@@ -362,7 +362,10 @@ def evaluate_irg(args, device, data_loader, model, mode=None):
 
     # Save to a CSV file
     #output_file = f"{args.output_dir}/{args.task}_{args.modeltype}_{mode}_results.csv"
-    output_file = f"{args.output_dir}/{args.modeltype}_{mode}_results.csv"
+    if args.missingInd:
+        output_file = f"{args.output_dir}/{args.modeltype}_{mode}_missingInd_results.csv"
+    else:
+        output_file = f"{args.output_dir}/{args.modeltype}_{mode}_results.csv"
     results_df.to_csv(output_file, index=False)
     print(f"Saved test predictions to {output_file}")
 
@@ -446,7 +449,7 @@ def update_kl_weights(args,epoch,smooth_factor,datasets):
             print("number of cxr_pred: ", len(cxr_pred))
             ecg_pred = pd.read_csv(f'/data/wang/junh/results/Fuse_moe/all_los/multiclass/missingInd/ECG_{dataset}_results.csv')
             print("number of ecg_pred: ", len(ecg_pred))
-            multi_pred = pd.read_csv(f'{args.output_dir}/{args.modeltype}_{dataset}_results.csv')
+            multi_pred = pd.read_csv(f"{args.output_dir}/{args.modeltype}_{mode}_missingInd_results.csv")
             print("number of multi_pred: ", len(multi_pred))
         else:
             ts_pred = pd.read_csv(f'/data/wang/junh/results/Fuse_moe/all_los/multiclass/TS_{dataset}_results.csv')

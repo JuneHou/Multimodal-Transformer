@@ -389,11 +389,6 @@ def split_ids(id_string, n=8):
     stay_id = int(id_string[8:])   # Convert remaining part to int
     return hadm_id, stay_id
 
-def jsd(p, q):
-    # Calculate the average distribution m
-    m = 0.5 * (p + q)
-    # Calculate the JSD using the definition
-    return 0.5 * (np.sum(rel_entr(p, m)) + np.sum(rel_entr(q, m)))
 
 def assign_4probs(ts_pred, text_pred, cxr_pred, ecg_pred, multi_pred):
     # Merge predictions
@@ -442,23 +437,62 @@ def assign_4probs_bilevel(ts_pred, text_pred, cxr_pred, ecg_pred, multi_pred, ep
     """
     MIN_WEIGHT = 0.0001
     # Merge predictions
-    df = ts_pred[['ids', 'Probs']].rename(columns={'Probs': 'ts'})
-    df = df.merge(text_pred[['ids', 'Probs']], on='ids', how='left').rename(columns={'Probs': 'text'})
-    df = df.merge(cxr_pred[['ids', 'Probs']], on='ids', how='left').rename(columns={'Probs': 'cxr'})
-    df = df.merge(ecg_pred[['ids', 'Probs']], on='ids', how='left').rename(columns={'Probs': 'ecg'})
-    df = df.merge(multi_pred[['ids', 'Probs']], on='ids', how='left').rename(columns={'Probs': 'Multi'}).dropna()
+    df = ts_pred[['ids', 'Probs', 'Predicted']].rename(columns={
+        'Probs': 'ts', 'Predicted': 'ts_preds'
+    })
+    
+    # Merge Text
+    df = df.merge(
+        text_pred[['ids', 'Probs', 'Predicted']].rename(columns={
+            'Probs': 'text', 'Predicted': 'text_preds'
+        }),
+        on='ids', how='left'
+    )
+    
+    # Merge CXR
+    df = df.merge(
+        cxr_pred[['ids', 'Probs', 'Predicted']].rename(columns={
+            'Probs': 'cxr', 'Predicted': 'cxr_preds'
+        }),
+        on='ids', how='left'
+    )
+    
+    # Merge ECG
+    df = df.merge(
+        ecg_pred[['ids', 'Probs', 'Predicted']].rename(columns={
+            'Probs': 'ecg', 'Predicted': 'ecg_preds'
+        }),
+        on='ids', how='left'
+    )
+    
+    # Merge Multi
+    df = df.merge(
+        multi_pred[['ids', 'Probs', 'Predicted']].rename(columns={
+            'Probs': 'Multi', 'Predicted': 'Multi_preds'
+        }),
+        on='ids', how='left'
+    )
 
     # Define modalities
-    modalities = ['ts', 'text', 'cxr', 'ecg', 'Multi']
+    modalities = []
+    if 'TS' in args.modeltype:
+        modalities.append('ts')
+    if 'Text' in args.modeltype:
+        modalities.append('text')
+    if 'CXR' in args.modeltype:
+        modalities.append('cxr')
+    if 'ECG' in args.modeltype:
+        modalities.append('ecg')
+    modalities.append('Multi')
 
     # Convert probability strings to arrays and normalize
     for col in modalities:
         df[col] = df[col].apply(lambda x: np.array(literal_eval(x)) if pd.notnull(x) else np.zeros(4))  # Assuming 4 classes
-        df[col] = df[col].apply(lambda x: x / np.sum(x) if np.sum(x) > 0 else np.zeros_like(x))  # Ensure valid probability distribution
+        #df[col] = df[col].apply(lambda x: x / np.sum(x) if np.sum(x) > 0 else np.zeros_like(x))  # Ensure valid probability distribution
 
-    # Calculate maximum probabilities for each row and modality
-    for modality in modalities:
-        df[f'max_{modality}'] = df[modality].apply(lambda x: np.max(x))
+    # # Calculate maximum probabilities for each row and modality
+    # for modality in modalities:
+    #     df[f'max_{modality}'] = df[modality].apply(lambda x: np.max(x))
 
 
 
@@ -468,32 +502,44 @@ def assign_4probs_bilevel(ts_pred, text_pred, cxr_pred, ecg_pred, multi_pred, ep
             lambda row: max(entropy(row[modality], row['Multi']), 0) if np.sum(row[modality]) > 0 and np.sum(row['Multi']) > 0 else 0,
             axis=1
         )
-        # Min-Max Normalization
-        min_kl = df[f'kl_{modality}'].min()
-        max_kl = df[f'kl_{modality}'].max()
+        # # Min-Max Normalization
+        # min_kl = df[f'kl_{modality}'].min()
+        # max_kl = df[f'kl_{modality}'].max()
         
-        if max_kl - min_kl > 0:  # Avoid division by zero
-            df[f'kl_{modality}'] = (df[f'kl_{modality}'] - min_kl) / (max_kl - min_kl)
+        # if max_kl - min_kl > 0:  # Avoid division by zero
+        #     df[f'kl_{modality}'] = (df[f'kl_{modality}'] - min_kl) / (max_kl - min_kl)
+        # else:
+        #     df[f'kl_{modality}'] = 0.0001 
+    # Normalize KL per instance across modalities
+    def normalize_kl(row):
+        kl_values = [row[f'kl_{mod}'] for mod in modalities[:-1]]
+        total = sum(kl_values)
+        if total > 0:
+            for mod in modalities[:-1]:
+                row[f'kl_{mod}'] = row[f'kl_{mod}'] / total
         else:
-            df[f'kl_{modality}'] = 0.0001 
+            for mod in modalities[:-1]:
+                row[f'kl_{mod}'] = 0.0001  # small default if all zero
+        return row
+    
+    df = df.apply(normalize_kl, axis=1)
 
     # Compute correlation weights
     correlation_weights = {}
     for modality in modalities[:-1]:  # Exclude 'Multi'
-        corr_coeff, _ = pearsonr(df[f'max_{modality}'], df['max_Multi'])
+        corr_coeff, _ = pearsonr(df[f'{modality}_preds'], df['Multi_preds'])
         correlation_weights[modality] = max(MIN_WEIGHT, corr_coeff)  # Ensure correlation weight is non-negative
 
     # Compute mutual information weights
     mutual_weights = {}
     for modality in modalities[:-1]:  # Exclude 'Multi'
-        mi_score = mutual_info_regression(df[f'max_{modality}'].values.reshape(-1, 1), df['max_Multi'])
+        mi_score = mutual_info_regression(df[f'{modality}_preds'].values.reshape(-1, 1), df['Multi_preds'])
         mutual_weights[modality] = max(MIN_WEIGHT, mi_score[0])
 
-    # Normalize KL divergence with safety check
-    for modality in modalities[:-1]:
-        #df[f'kl_{modality}'] = (df[f'kl_{modality}']) * correlation_weights[modality]
-        #df[f'kl_{modality}'] = (df[f'kl_{modality}']) * mutual_weights[modality]
-        df[f'kl_{modality}'] = mutual_weights[modality]
+    # for modality in modalities[:-1]:
+    #     df[f'kl_{modality}'] = (df[f'kl_{modality}']) * correlation_weights[modality]
+    #     #df[f'kl_{modality}'] = (df[f'kl_{modality}']) * mutual_weights[modality]
+    #     #df[f'kl_{modality}'] = mutual_weights[modality]
 
     if args.missingInd:
         LOG_FILE = f"{args.output_dir}/Missing_{args.modeltype}_{epoch}_weights_log.csv"
