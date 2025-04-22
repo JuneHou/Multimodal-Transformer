@@ -22,7 +22,6 @@ from numpy import dot
 from numpy.linalg import norm
 from scipy.stats import entropy, pearsonr
 from sklearn.metrics import mutual_info_score
-from sklearn.feature_selection import mutual_info_regression
 
 from ast import literal_eval
 from tqdm import tqdm
@@ -172,6 +171,9 @@ def parse_args():
     parser.add_argument("--use_pt_text_embeddings", action='store_true', help="Option to use pre-extracted text embeddings")
     parser.add_argument("--router_type", default='joint', type=str, help="all router types: joint, permod, disjoint")
     parser.add_argument("--missingInd", action='store_true', help="Option to use missing indicator for TS data")
+    
+    parser.add_argument("--weights_type", default='kl', type=str)
+    
     args = parser.parse_args()
     return args
 
@@ -523,23 +525,44 @@ def assign_4probs_bilevel(ts_pred, text_pred, cxr_pred, ecg_pred, multi_pred, ep
         return row
     
     df = df.apply(normalize_kl, axis=1)
+    # Define all predicted class columns
+    pred_label_cols = ['ts_preds', 'text_preds', 'cxr_preds', 'ecg_preds', 'Multi_preds']
+
+    # Replace NaNs with 0 (safe placeholder for missing prediction)
+    df[pred_label_cols] = df[pred_label_cols].fillna(0)
+
+    # Optional: convert to int (if needed for MI or correlation)
+    df[pred_label_cols] = df[pred_label_cols].astype(int)
+
 
     # Compute correlation weights
-    correlation_weights = {}
-    for modality in modalities[:-1]:  # Exclude 'Multi'
-        corr_coeff, _ = pearsonr(df[f'{modality}_preds'], df['Multi_preds'])
-        correlation_weights[modality] = max(MIN_WEIGHT, corr_coeff)  # Ensure correlation weight is non-negative
+    # correlation_weights = {}
+    # for modality in modalities[:-1]:  # Exclude 'Multi'
+    #     corr_coeff, _ = pearsonr(df[f'{modality}_preds'], df['Multi_preds'])
+    #     correlation_weights[modality] = max(MIN_WEIGHT, corr_coeff)  # Ensure correlation weight is non-negative
 
     # Compute mutual information weights
     mutual_weights = {}
     for modality in modalities[:-1]:  # Exclude 'Multi'
-        mi_score = mutual_info_regression(df[f'{modality}_preds'].values.reshape(-1, 1), df['Multi_preds'])
-        mutual_weights[modality] = max(MIN_WEIGHT, mi_score[0])
+        # Convert both to int (safe for class labels)
+        x = df[f'{modality}_preds'].astype(int)
+        y = df['Multi_preds'].astype(int)
+        
+        mi_score = mutual_info_score(x, y)
+        
+        # Safe guard for very small values
+        mutual_weights[modality] = max(MIN_WEIGHT, mi_score)
+    # Normalize mutual_weights to sum to 1
+    mi_total = sum(mutual_weights.values())
+    mutual_weights = {k: v / mi_total for k, v in mutual_weights.items()}
 
-    # for modality in modalities[:-1]:
-    #     df[f'kl_{modality}'] = (df[f'kl_{modality}']) * correlation_weights[modality]
-    #     #df[f'kl_{modality}'] = (df[f'kl_{modality}']) * mutual_weights[modality]
-    #     #df[f'kl_{modality}'] = mutual_weights[modality]
+    if args.weights_type != 'kl':
+        for modality in modalities[:-1]:
+            if args.weights_type == 'kl+cc':
+                df[f'kl_{modality}'] = (df[f'kl_{modality}']) * correlation_weights[modality]
+            elif args.weights_type == 'kl+mi':
+                df[f'kl_{modality}'] = (df[f'kl_{modality}']) * mutual_weights[modality]
+            #df[f'kl_{modality}'] = mutual_weights[modality]
 
     if args.missingInd:
         LOG_FILE = f"{args.output_dir}/Missing_{args.modeltype}_{epoch}_weights_log.csv"
@@ -549,7 +572,7 @@ def assign_4probs_bilevel(ts_pred, text_pred, cxr_pred, ecg_pred, multi_pred, ep
     # Create DataFrame for logging
     log_data = []
     for modality in modalities[:-1]:
-        corr_weight = correlation_weights[modality]
+        #corr_weight = correlation_weights[modality]
         mutual_weight = mutual_weights[modality]
 
         for _, row in df.iterrows():
@@ -557,12 +580,11 @@ def assign_4probs_bilevel(ts_pred, text_pred, cxr_pred, ecg_pred, multi_pred, ep
             log_data.append([
                 epoch,
                 modality,
-                corr_weight,
                 mutual_weight,
                 kl_value
             ])
 
-    df_log = pd.DataFrame(log_data, columns=["epoch", "modality", "correlation_weight", "mutual_weight", "kl_divergence"])
+    df_log = pd.DataFrame(log_data, columns=["epoch", "modality", "mutual_weight", "kl_divergence"])
 
     # Append to CSV
     if os.path.exists(LOG_FILE):

@@ -42,10 +42,6 @@ def eval_test(args, model, dataloader, device, mode=None):
     for eval_type, val in eval_vals.items():
         result_dict[seed][eval_type] = {}
         result_dict[seed][eval_type][mode] = val
-        # if mode in ["train", "val"]:
-        #     result_dict[seed][eval_type]['best_val'] = checkpoint['best_val'][eval_type] if best_model_file else None
-        # else:
-        #     result_dict[seed][eval_type]['best_val'] = None
 
     # Save results to a pickle file if in test mode
     if mode == "test":
@@ -149,7 +145,7 @@ def trainer_irg(model,args,accelerator,train_dataloader,dev_dataloader,test_data
     best_evals={}
     weights_updated = False
     last_f1 = None
-    decay_rate = 0.05
+    decay_rate = 0.1
     smooth_factor = 0.5
 
     # Check if the file already exists and load previous gradients
@@ -223,6 +219,8 @@ def trainer_irg(model,args,accelerator,train_dataloader,dev_dataloader,test_data
         current_f1 = eval_vals.get('f1', 0)
 
         evaluate_irg(args,device,train_dataloader,model, mode='train')
+
+###################################################################################
         print("-"*50)
         print("Original Smooth Factor: ", smooth_factor)
 
@@ -250,6 +248,7 @@ def trainer_irg(model,args,accelerator,train_dataloader,dev_dataloader,test_data
             test_data_loader = accelerator.prepare(test_data_loader)
             print("Reloaded test dataset")
             args.finish_train = True
+#################################################################################
 
         # Save Best Value
         k = "f1"
