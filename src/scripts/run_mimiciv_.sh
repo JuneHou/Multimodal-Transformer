@@ -1,11 +1,11 @@
-export CUDA_VISIBLE_DEVICES="4" 
+export CUDA_VISIBLE_DEVICES="6" 
 
 python -W ignore ./src/scripts/main_mimiciv_.py  --num_train_epochs 8  --modeltype 'TS_ECG_Text' \
                 --kernel_size 1 --train_batch_size 2 --eval_batch_size 8 --seed 42 \
                 --num_pretrain_epochs 80 --gradient_accumulation_steps 16  --num_update_bert_epochs 2 --bertcount 3 \
                 --ts_learning_rate 0.0004 --txt_learning_rate 0.00002 \
                 --notes_order 'Last' --num_of_notes 5 --max_length 1024 --layers 3\
-                --output_dir "/data/wang/junh/results/Fuse_moe/all_los/multiclass/final/kl_mi_0.1/" \
+                --output_dir "/data/wang/junh/results/Fuse_moe/all_los/multiclass/final/baseline2/" \
                 --embed_dim 128 \
                 --num_modalities 3 \
                 --model_name "bioLongformer"\
@@ -31,5 +31,4 @@ python -W ignore ./src/scripts/main_mimiciv_.py  --num_train_epochs 8  --modelty
                 --use_pt_text_embeddings \
                 --router_type 'permod' \
                 --reg_ts \
-                --weights_type 'kl+mi'\
                 --missingInd

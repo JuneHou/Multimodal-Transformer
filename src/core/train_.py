@@ -145,23 +145,23 @@ def trainer_irg(model,args,accelerator,train_dataloader,dev_dataloader,test_data
     best_evals={}
     weights_updated = False
     last_f1 = None
-    decay_rate = 0.1
+    decay_rate = 0.05
     smooth_factor = 0.5
 
     # Check if the file already exists and load previous gradients
     output_file_base = '/data/wang/junh/githubs/Multimodal-Transformer/' + args.modeltype
     for epoch in tqdm(range(args.num_train_epochs)):
         args.finish_train = False
-        print(os.listdir(args.file_path))
+        # print(os.listdir(args.file_path))
         
-        # if result exist, the weights have been updated
-        if weights_updated:
-            from preprocessing.data_mimiciv_ import data_perpare
-            # reload the dataset, the args.file_path have been updated
-            train_dataset, train_dataloader = data_perpare(args, 'train', tokenizer)
-            dev_dataset, dev_dataloader = data_perpare(args, 'val', tokenizer)
-            train_dataloader, dev_dataloader = accelerator.prepare(train_dataloader, dev_dataloader)
-            print("Reloaded the dataset")
+        # # if result exist, the weights have been updated
+        # if weights_updated:
+        #     from preprocessing.data_mimiciv_ import data_perpare
+        #     # reload the dataset, the args.file_path have been updated
+        #     train_dataset, train_dataloader = data_perpare(args, 'train', tokenizer)
+        #     dev_dataset, dev_dataloader = data_perpare(args, 'val', tokenizer)
+        #     train_dataloader, dev_dataloader = accelerator.prepare(train_dataloader, dev_dataloader)
+        #     print("Reloaded the dataset")
 
         cumulative_gradients = defaultdict(lambda: None)  # Initialize with Non
         all_gradients = []
@@ -221,33 +221,33 @@ def trainer_irg(model,args,accelerator,train_dataloader,dev_dataloader,test_data
         evaluate_irg(args,device,train_dataloader,model, mode='train')
 
 ###################################################################################
-        print("-"*50)
-        print("Original Smooth Factor: ", smooth_factor)
+        # print("-"*50)
+        # print("Original Smooth Factor: ", smooth_factor)
 
-        if last_f1 is not None:
-            f1_delta = current_f1 - last_f1
-            if f1_delta > 0:
-                smooth_factor = min(smooth_factor + decay_rate, 1)  # Cap at 1 to avoid overshooting
-            else:
-                smooth_factor = max(smooth_factor - decay_rate, 0)
+        # if last_f1 is not None:
+        #     f1_delta = current_f1 - last_f1
+        #     if f1_delta > 0:
+        #         smooth_factor = min(smooth_factor + decay_rate, 1)  # Cap at 1 to avoid overshooting
+        #     else:
+        #         smooth_factor = max(smooth_factor - decay_rate, 0)
 
-            print("F1 Delta: ", f1_delta)
-            print(f"Updated Smooth factor: {smooth_factor}")
-        print("-"*50)
+        #     print("F1 Delta: ", f1_delta)
+        #     print(f"Updated Smooth factor: {smooth_factor}")
+        # print("-"*50)
 
-        last_f1 = current_f1  # Update last_f1 for the next epoch
+        # last_f1 = current_f1  # Update last_f1 for the next epoch
 
-        update_kl_weights(args, epoch, smooth_factor, ['train', 'val'])
-        weights_updated = True
+        # update_kl_weights(args, epoch, smooth_factor, ['train', 'val'])
+        # weights_updated = True
 
-        if epoch==args.num_train_epochs-1:
-            from preprocessing.data_mimiciv_ import data_perpare
-            evaluate_irg(args,device,test_data_loader,model, mode='test')
-            update_kl_weights(args, epoch, smooth_factor, ['test'])
-            _, test_data_loader = data_perpare(args, 'test', tokenizer)
-            test_data_loader = accelerator.prepare(test_data_loader)
-            print("Reloaded test dataset")
-            args.finish_train = True
+        # if epoch==args.num_train_epochs-1:
+        #     from preprocessing.data_mimiciv_ import data_perpare
+        #     evaluate_irg(args,device,test_data_loader,model, mode='test')
+        #     update_kl_weights(args, epoch, smooth_factor, ['test'])
+        #     _, test_data_loader = data_perpare(args, 'test', tokenizer)
+        #     test_data_loader = accelerator.prepare(test_data_loader)
+        #     print("Reloaded test dataset")
+        #     args.finish_train = True
 #################################################################################
 
         # Save Best Value

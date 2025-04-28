@@ -556,14 +556,21 @@ def assign_4probs_bilevel(ts_pred, text_pred, cxr_pred, ecg_pred, multi_pred, ep
     mi_total = sum(mutual_weights.values())
     mutual_weights = {k: v / mi_total for k, v in mutual_weights.items()}
 
-    if args.weights_type != 'kl':
-        for modality in modalities[:-1]:
-            if args.weights_type == 'kl+cc':
-                df[f'kl_{modality}'] = (df[f'kl_{modality}']) * correlation_weights[modality]
-            elif args.weights_type == 'kl+mi':
-                df[f'kl_{modality}'] = (df[f'kl_{modality}']) * mutual_weights[modality]
-            #df[f'kl_{modality}'] = mutual_weights[modality]
+    scale_dict = None
+    if args.weights_type == "kl+cc":
+        scale_dict = correlation_weights        # already L1-normalised
+    elif args.weights_type == "kl+mi":
+        scale_dict = mutual_weights             # now L1-normalised
 
+    if scale_dict is not None:                  # kl+cc or kl+mi branch
+        for modality in modalities[:-1]:        # exclude 'Multi'
+            df[f'kl_{modality}'] *= scale_dict[modality]
+
+        # ---- row-wise renormalisation so Σ_m w_i,m = 1 -----------------
+        kl_cols = [f'kl_{m}' for m in modalities[:-1]]
+        row_sum = df[kl_cols].sum(axis=1)
+        df[kl_cols] = df[kl_cols].div(row_sum, axis=0)
+        
     if args.missingInd:
         LOG_FILE = f"{args.output_dir}/Missing_{args.modeltype}_{epoch}_weights_log.csv"
     else:
