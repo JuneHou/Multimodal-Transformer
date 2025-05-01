@@ -506,20 +506,20 @@ class MULTCrossModel(nn.Module):
             proj_names = []
 
             if "TS" in self.modeltype:
-                #proj_lists.append(proj_x_ts*ts_weight)
-                proj_lists.append(proj_x_ts)
+                proj_lists.append(proj_x_ts*ts_weight)
+                # proj_lists.append(proj_x_ts)
                 proj_names.append('ts')
             if "CXR" in self.modeltype:
-                #proj_lists.append(proj_x_cxr*cxr_weight)
-                proj_lists.append(proj_x_cxr)
+                proj_lists.append(proj_x_cxr*cxr_weight)
+                # proj_lists.append(proj_x_cxr)
                 proj_names.append('cxr')
             if "Text" in self.modeltype:
-                #proj_lists.append(proj_x_txt*text_weight)
-                proj_lists.append(proj_x_txt)
+                proj_lists.append(proj_x_txt*text_weight)
+                # proj_lists.append(proj_x_txt)
                 proj_names.append('txt')
             if "ECG" in self.modeltype:
-                #proj_lists.append(proj_x_ecg*ecg_weight)
-                proj_lists.append(proj_x_ecg)
+                proj_lists.append(proj_x_ecg*ecg_weight)
+                # proj_lists.append(proj_x_ecg)
                 proj_names.append('ecg')
             
             hiddens, routing_log = self.trans_self_cross_ts_txt(proj_lists, proj_names)

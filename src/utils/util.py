@@ -487,90 +487,112 @@ def assign_4probs_bilevel(ts_pred, text_pred, cxr_pred, ecg_pred, multi_pred, ep
         modalities.append('ecg')
     modalities.append('Multi')
 
-    # Convert probability strings to arrays and normalize
-    for col in modalities:
-        df[col] = df[col].apply(lambda x: np.array(literal_eval(x)) if pd.notnull(x) else np.zeros(4))  # Assuming 4 classes
-        #df[col] = df[col].apply(lambda x: x / np.sum(x) if np.sum(x) > 0 else np.zeros_like(x))  # Ensure valid probability distribution
+    if args.weights_type == "mi":
+        pred_label_cols = ['ts_preds', 'text_preds', 'cxr_preds', 'ecg_preds', 'Multi_preds']
 
-    # # Calculate maximum probabilities for each row and modality
-    # for modality in modalities:
-    #     df[f'max_{modality}'] = df[modality].apply(lambda x: np.max(x))
+        # Replace NaNs with 0 (safe placeholder for missing prediction)
+        df[pred_label_cols] = df[pred_label_cols].fillna(0)
 
-
-
-    # Compute KL divergence, ensuring values remain non-negative
-    for modality in modalities[:-1]:
-        df[f'kl_{modality}'] = df.apply(
-            lambda row: max(entropy(row[modality], row['Multi']), 0) if np.sum(row[modality]) > 0 and np.sum(row['Multi']) > 0 else 0,
-            axis=1
-        )
-        # # Min-Max Normalization
-        # min_kl = df[f'kl_{modality}'].min()
-        # max_kl = df[f'kl_{modality}'].max()
-        
-        # if max_kl - min_kl > 0:  # Avoid division by zero
-        #     df[f'kl_{modality}'] = (df[f'kl_{modality}'] - min_kl) / (max_kl - min_kl)
-        # else:
-        #     df[f'kl_{modality}'] = 0.0001 
-    # Normalize KL per instance across modalities
-    def normalize_kl(row):
-        kl_values = [row[f'kl_{mod}'] for mod in modalities[:-1]]
-        total = sum(kl_values)
-        if total > 0:
-            for mod in modalities[:-1]:
-                row[f'kl_{mod}'] = row[f'kl_{mod}'] / total
-        else:
-            for mod in modalities[:-1]:
-                row[f'kl_{mod}'] = 0.0001  # small default if all zero
-        return row
-    
-    df = df.apply(normalize_kl, axis=1)
-    # Define all predicted class columns
-    pred_label_cols = ['ts_preds', 'text_preds', 'cxr_preds', 'ecg_preds', 'Multi_preds']
-
-    # Replace NaNs with 0 (safe placeholder for missing prediction)
-    df[pred_label_cols] = df[pred_label_cols].fillna(0)
-
-    # Optional: convert to int (if needed for MI or correlation)
-    df[pred_label_cols] = df[pred_label_cols].astype(int)
-
-
-    # Compute correlation weights
-    # correlation_weights = {}
-    # for modality in modalities[:-1]:  # Exclude 'Multi'
-    #     corr_coeff, _ = pearsonr(df[f'{modality}_preds'], df['Multi_preds'])
-    #     correlation_weights[modality] = max(MIN_WEIGHT, corr_coeff)  # Ensure correlation weight is non-negative
-
-    # Compute mutual information weights
-    mutual_weights = {}
-    for modality in modalities[:-1]:  # Exclude 'Multi'
-        # Convert both to int (safe for class labels)
-        x = df[f'{modality}_preds'].astype(int)
-        y = df['Multi_preds'].astype(int)
-        
-        mi_score = mutual_info_score(x, y)
-        
-        # Safe guard for very small values
-        mutual_weights[modality] = max(MIN_WEIGHT, mi_score)
-    # Normalize mutual_weights to sum to 1
-    mi_total = sum(mutual_weights.values())
-    mutual_weights = {k: v / mi_total for k, v in mutual_weights.items()}
-
-    scale_dict = None
-    if args.weights_type == "kl+cc":
-        scale_dict = correlation_weights        # already L1-normalised
-    elif args.weights_type == "kl+mi":
-        scale_dict = mutual_weights             # now L1-normalised
-
-    if scale_dict is not None:                  # kl+cc or kl+mi branch
+        # Optional: convert to int (if needed for MI or correlation)
+        df[pred_label_cols] = df[pred_label_cols].astype(int)
+        # 1) compute modality-level MI (already L1-normalised)
+        mutual_weights = {}
         for modality in modalities[:-1]:        # exclude 'Multi'
-            df[f'kl_{modality}'] *= scale_dict[modality]
+            x = df[f'{modality}_preds'].astype(int)
+            y = df['Multi_preds'].astype(int)
+            mi_score = mutual_info_score(x, y)
+            mutual_weights[modality] = max(MIN_WEIGHT, mi_score)
 
-        # ---- row-wise renormalisation so Σ_m w_i,m = 1 -----------------
-        kl_cols = [f'kl_{m}' for m in modalities[:-1]]
-        row_sum = df[kl_cols].sum(axis=1)
-        df[kl_cols] = df[kl_cols].div(row_sum, axis=0)
+        # normalise once so Σ_m w_m = 1  (no per-row normalisation later)
+        Z = sum(mutual_weights.values())
+        mutual_weights = {m: w / Z for m, w in mutual_weights.items()}
+
+        # 2) broadcast MI weights to the expected kl_* columns
+        for modality in modalities[:-1]:
+            df[f'kl_{modality}'] = mutual_weights[modality]
+    else:
+
+        # Convert probability strings to arrays and normalize
+        for col in modalities:
+            df[col] = df[col].apply(lambda x: np.array(literal_eval(x)) if pd.notnull(x) else np.zeros(4))  # Assuming 4 classes
+
+        # Compute KL divergence, ensuring values remain non-negative
+        for modality in modalities[:-1]:
+            df[f'kl_{modality}'] = df.apply(
+                lambda row: max(entropy(row[modality], row['Multi']), 0) if np.sum(row[modality]) > 0 and np.sum(row['Multi']) > 0 else 0,
+                axis=1
+            )
+        # Normalize KL per instance across modalities
+        def normalize_kl(row):
+            kl_values = [row[f'kl_{mod}'] for mod in modalities[:-1]]
+            total = sum(kl_values)
+            if total > 0:
+                for mod in modalities[:-1]:
+                    row[f'kl_{mod}'] = row[f'kl_{mod}'] / total
+            else:
+                for mod in modalities[:-1]:
+                    row[f'kl_{mod}'] = 0.0001  # small default if all zero
+            return row
         
+        if args.weights_type == "global_kl":
+            global_kl_weights = {
+                modality: max(np.mean(df[f'kl_{modality}']), MIN_WEIGHT)
+                for modality in modalities[:-1]
+            }
+            Z = sum(global_kl_weights.values())
+            global_kl_weights = {k: v / Z for k, v in global_kl_weights.items()}
+
+            for modality in modalities[:-1]:
+                df[f'kl_{modality}'] = global_kl_weights[modality]
+
+        # 3. Only normalize instance-level KLs if not using global KL
+        else:
+            df = df.apply(normalize_kl, axis=1)
+        # Define all predicted class columns
+        pred_label_cols = ['ts_preds', 'text_preds', 'cxr_preds', 'ecg_preds', 'Multi_preds']
+
+        # Replace NaNs with 0 (safe placeholder for missing prediction)
+        df[pred_label_cols] = df[pred_label_cols].fillna(0)
+
+        # Optional: convert to int (if needed for MI or correlation)
+        df[pred_label_cols] = df[pred_label_cols].astype(int)
+
+        # Compute mutual information weights
+        mutual_weights = {}
+        for modality in modalities[:-1]:  # Exclude 'Multi'
+            # Convert both to int (safe for class labels)
+            x = df[f'{modality}_preds'].astype(int)
+            y = df['Multi_preds'].astype(int)
+            
+            mi_score = mutual_info_score(x, y)
+            
+            # Safe guard for very small values
+            mutual_weights[modality] = max(MIN_WEIGHT, mi_score)
+        # Normalize mutual_weights to sum to 1
+        mi_total = sum(mutual_weights.values())
+        mutual_weights = {k: v / mi_total for k, v in mutual_weights.items()}
+
+        scale_dict = None
+        if args.weights_type == "kl+mi":
+            scale_dict = mutual_weights             # now L1-normalised
+
+            # for modality in modalities[:-1]:        # exclude 'Multi'
+            #     df[f'kl_{modality}'] *= scale_dict[modality]
+
+            # # ---- row-wise renormalisation so Σ_m w_i,m = 1 -----------------
+            # kl_cols = [f'kl_{m}' for m in modalities[:-1]]
+            # row_sum = df[kl_cols].sum(axis=1)
+            # df[kl_cols] = df[kl_cols].div(row_sum, axis=0)
+            
+            # Apply exponentiation BEFORE scaling with MI
+            for modality in modalities[:-1]:
+                df[f'kl_{modality}'] = np.exp(-df[f'kl_{modality}']) * scale_dict[modality]
+
+            # Renormalize row-wise (so Σ_m W_i,m = 1)
+            kl_cols = [f'kl_{m}' for m in modalities[:-1]]
+            row_sum = df[kl_cols].sum(axis=1)
+            df[kl_cols] = df[kl_cols].div(row_sum, axis=0)
+            
     if args.missingInd:
         LOG_FILE = f"{args.output_dir}/Missing_{args.modeltype}_{epoch}_weights_log.csv"
     else:
@@ -579,7 +601,6 @@ def assign_4probs_bilevel(ts_pred, text_pred, cxr_pred, ecg_pred, multi_pred, ep
     # Create DataFrame for logging
     log_data = []
     for modality in modalities[:-1]:
-        #corr_weight = correlation_weights[modality]
         mutual_weight = mutual_weights[modality]
 
         for _, row in df.iterrows():

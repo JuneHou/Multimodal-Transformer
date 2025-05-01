@@ -221,33 +221,33 @@ def trainer_irg(model,args,accelerator,train_dataloader,dev_dataloader,test_data
         evaluate_irg(args,device,train_dataloader,model, mode='train')
 
 ###################################################################################
-        # print("-"*50)
-        # print("Original Smooth Factor: ", smooth_factor)
+        print("-"*50)
+        print("Original Smooth Factor: ", smooth_factor)
 
-        # if last_f1 is not None:
-        #     f1_delta = current_f1 - last_f1
-        #     if f1_delta > 0:
-        #         smooth_factor = min(smooth_factor + decay_rate, 1)  # Cap at 1 to avoid overshooting
-        #     else:
-        #         smooth_factor = max(smooth_factor - decay_rate, 0)
+        if last_f1 is not None:
+            f1_delta = current_f1 - last_f1
+            if f1_delta > 0:
+                smooth_factor = min(smooth_factor + decay_rate, 1)  # Cap at 1 to avoid overshooting
+            else:
+                smooth_factor = max(smooth_factor - decay_rate, 0)
 
-        #     print("F1 Delta: ", f1_delta)
-        #     print(f"Updated Smooth factor: {smooth_factor}")
-        # print("-"*50)
+            print("F1 Delta: ", f1_delta)
+            print(f"Updated Smooth factor: {smooth_factor}")
+        print("-"*50)
 
-        # last_f1 = current_f1  # Update last_f1 for the next epoch
+        last_f1 = current_f1  # Update last_f1 for the next epoch
 
-        # update_kl_weights(args, epoch, smooth_factor, ['train', 'val'])
-        # weights_updated = True
+        update_kl_weights(args, epoch, smooth_factor, ['train', 'val'])
+        weights_updated = True
 
-        # if epoch==args.num_train_epochs-1:
-        #     from preprocessing.data_mimiciv_ import data_perpare
-        #     evaluate_irg(args,device,test_data_loader,model, mode='test')
-        #     update_kl_weights(args, epoch, smooth_factor, ['test'])
-        #     _, test_data_loader = data_perpare(args, 'test', tokenizer)
-        #     test_data_loader = accelerator.prepare(test_data_loader)
-        #     print("Reloaded test dataset")
-        #     args.finish_train = True
+        if epoch==args.num_train_epochs-1:
+            from preprocessing.data_mimiciv_ import data_perpare
+            evaluate_irg(args,device,test_data_loader,model, mode='test')
+            update_kl_weights(args, epoch, smooth_factor, ['test'])
+            _, test_data_loader = data_perpare(args, 'test', tokenizer)
+            test_data_loader = accelerator.prepare(test_data_loader)
+            print("Reloaded test dataset")
+            args.finish_train = True
 #################################################################################
 
         # Save Best Value
@@ -440,13 +440,13 @@ def update_kl_weights(args,epoch,smooth_factor,datasets):
 
         if args.missingInd:
         
-            ts_pred = pd.read_csv(f'/data/wang/junh/results/Fuse_moe/all_los/multiclass/missingInd/TS_{dataset}_results.csv')
+            ts_pred = pd.read_csv(f'/data/wang/junh/results/Fuse_moe/all_los/multiclass/unimodal_miss/TS_{dataset}_results.csv')
             print("number of ts_pred: ", len(ts_pred))
-            text_pred = pd.read_csv(f'/data/wang/junh/results/Fuse_moe/all_los/multiclass/missingInd/Text_{dataset}_results.csv')
+            text_pred = pd.read_csv(f'/data/wang/junh/results/Fuse_moe/all_los/multiclass/unimodal_miss/Text_{dataset}_results.csv')
             print("number of text_pred: ", len(text_pred))
-            cxr_pred = pd.read_csv(f'/data/wang/junh/results/Fuse_moe/all_los/multiclass/missingInd/CXR_{dataset}_results.csv')
+            cxr_pred = pd.read_csv(f'/data/wang/junh/results/Fuse_moe/all_los/multiclass/unimodal_miss/CXR_{dataset}_results.csv')
             print("number of cxr_pred: ", len(cxr_pred))
-            ecg_pred = pd.read_csv(f'/data/wang/junh/results/Fuse_moe/all_los/multiclass/missingInd/ECG_{dataset}_results.csv')
+            ecg_pred = pd.read_csv(f'/data/wang/junh/results/Fuse_moe/all_los/multiclass/unimodal_miss/ECG_{dataset}_results.csv')
             print("number of ecg_pred: ", len(ecg_pred))
             multi_pred = pd.read_csv(f"{args.output_dir}/{args.modeltype}_{dataset}_missingInd_results.csv")
             print("number of multi_pred: ", len(multi_pred))
