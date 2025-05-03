@@ -1,4 +1,4 @@
-export CUDA_VISIBLE_DEVICES="2" 
+export CUDA_VISIBLE_DEVICES="7" 
 
 python -W ignore ./src/scripts/main_mimiciv_.py  --num_train_epochs 8  --modeltype 'TS_ECG_Text' \
                 --kernel_size 1 --train_batch_size 2 --eval_batch_size 8 --seed 42 \

@@ -152,16 +152,16 @@ def trainer_irg(model,args,accelerator,train_dataloader,dev_dataloader,test_data
     output_file_base = '/data/wang/junh/githubs/Multimodal-Transformer/' + args.modeltype
     for epoch in tqdm(range(args.num_train_epochs)):
         args.finish_train = False
-        # print(os.listdir(args.file_path))
+        print(os.listdir(args.file_path))
         
-        # # if result exist, the weights have been updated
-        # if weights_updated:
-        #     from preprocessing.data_mimiciv_ import data_perpare
-        #     # reload the dataset, the args.file_path have been updated
-        #     train_dataset, train_dataloader = data_perpare(args, 'train', tokenizer)
-        #     dev_dataset, dev_dataloader = data_perpare(args, 'val', tokenizer)
-        #     train_dataloader, dev_dataloader = accelerator.prepare(train_dataloader, dev_dataloader)
-        #     print("Reloaded the dataset")
+        # if result exist, the weights have been updated
+        if weights_updated:
+            from preprocessing.data_mimiciv_ import data_perpare
+            # reload the dataset, the args.file_path have been updated
+            train_dataset, train_dataloader = data_perpare(args, 'train', tokenizer)
+            dev_dataset, dev_dataloader = data_perpare(args, 'val', tokenizer)
+            train_dataloader, dev_dataloader = accelerator.prepare(train_dataloader, dev_dataloader)
+            print("Reloaded the dataset")
 
         cumulative_gradients = defaultdict(lambda: None)  # Initialize with Non
         all_gradients = []
@@ -463,7 +463,10 @@ def update_kl_weights(args,epoch,smooth_factor,datasets):
             print("number of multi_pred: ", len(multi_pred))
 
         # assign_4probs_bilevel, assign_4probs
-        kl_scores = assign_4probs_bilevel(ts_pred, text_pred, cxr_pred, ecg_pred, multi_pred, epoch, args)
+        if args.weights_type == 'global_kl' or args.weights_type == 'mi':
+            kl_scores = assign_4probs(ts_pred, text_pred, cxr_pred, ecg_pred, multi_pred, epoch, args)
+        else:
+            kl_scores = assign_4probs_bilevel(ts_pred, text_pred, cxr_pred, ecg_pred, multi_pred, epoch, args)
         # will update the file path in args to /new_weights/
         if epoch==0 or dataset=='test':
             new_stays_list = update_stays_with_weights(args, args.old_file_path, output_dir, kl_scores, smooth_factor, dataset)
