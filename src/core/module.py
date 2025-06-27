@@ -793,6 +793,7 @@ class TransformerEncoderLayerMoE(nn.Module):
         self.num_heads = num_heads
         self.num_modalities = num_modalities
         self.attn_mask = attn_mask
+        self.modeltype = args.modeltype
 
         # Layer Normalizations for self-attention mechanisms
         self.pre_self_attn_layer_norm = nn.ModuleList([nn.LayerNorm(embed_dim) for _ in range(num_modalities)])
@@ -871,7 +872,7 @@ class TransformerEncoderLayerMoE(nn.Module):
             if torch.isnan(embeddings).any():
                 return None
             # just replace this with hierarchical moe
-            moe_out, balance_loss = self.moe(x_mod_in)
+            moe_out, balance_loss, _ = self.moe(x_mod_in, modalities=self.modeltype)
             x_mod_out = [moe_out[:, embd_len_list[i]:embd_len_list[i + 1]] for i in range(len(embd_len_list) - 1)]
             x_allmod_output = [torch.reshape(x, (seq_len, bs, -1)) for x in x_mod_out]
             moe_output = [F.dropout(x, p=self.res_dropout, training=self.training) for x in x_allmod_output]

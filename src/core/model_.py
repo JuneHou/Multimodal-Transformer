@@ -575,7 +575,7 @@ class MULTCrossModel(nn.Module):
                 # Use a multiclass classification approach for LOS
                 # Assuming output has the correct shape (batch_size, num_classes)
                 return self.loss_fct1(output, labels), torch.nn.functional.softmax(output, dim=-1)
-            return last_hs_proj, routing_log, torch.nn.functional.softmax(output, dim=-1)
+            return last_hs_proj, torch.nn.functional.softmax(output, dim=-1)
 
         elif 'pheno' in self.task:
             if labels!=None:
@@ -691,7 +691,7 @@ class TSMixed(nn.Module):
         out1 = self.linear(tt)
         return torch.cat([out1, out2], -1)
 
-    def forward(self, x_ts, x_ts_mask, ts_tt_list,labels=None,reg_ts=None):
+    def forward(self, x_ts, x_ts_mask, ts_tt_list,labels=None,reg_ts=None, ts_weight=None, text_weight=None, cxr_weight=None, ecg_weight=None, mode='train'):
         """
         dimension [batch_size, seq_len, n_features]
 
@@ -929,7 +929,7 @@ class TextMoE(nn.Module):
         return missing_indices, non_missing
 
     def forward(self, input_ids_sequences, attn_mask_sequences, 
-                text_emb, note_time_list, note_time_mask_list, text_missing, labels=None):
+                text_emb, note_time_list, note_time_mask_list, text_missing, labels=None, ts_weight=None, text_weight=None, cxr_weight=None, ecg_weight=None, mode='train'):
         """
         dimension [batch_size, seq_len, n_features]
 
@@ -1102,7 +1102,7 @@ class CXRMoE(nn.Module):
         non_missing = all_indices[missing_mask]
         return missing_indices, non_missing
 
-    def forward(self, cxr_feats, cxr_time, cxr_time_mask, cxr_missing, labels=None):
+    def forward(self, cxr_feats, cxr_time, cxr_time_mask, cxr_missing, labels=None, ts_weight=None, text_weight=None, cxr_weight=None, ecg_weight=None, mode='train'):
         """
         dimension [batch_size, seq_len, n_features]
 
@@ -1271,7 +1271,7 @@ class ECGMoE(nn.Module):
         non_missing = all_indices[missing_mask]
         return missing_indices, non_missing
 
-    def forward(self, ecg_feats, ecg_time, ecg_time_mask, ecg_missing, labels=None):
+    def forward(self, ecg_feats, ecg_time, ecg_time_mask, ecg_missing, labels=None, ts_weight=None, text_weight=None, cxr_weight=None, ecg_weight=None, mode='train'):
         """
         dimension [batch_size, seq_len, n_features]
 

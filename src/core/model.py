@@ -250,15 +250,36 @@ class MULTCrossModel(nn.Module):
         else:
             # baseline fusion methods
             self.d_txt = args.embed_dim
-            self.trans_ts_mem = self.get_network(self_type='ts_mem', layers=args.layers)
-            self.trans_txt_mem = self.get_network(self_type='txt_mem', layers=args.layers)
+            self.trans_ts_mem = self.get_network(self_type='ts_mem', layers=args.layers, num_mix=3)
+            self.trans_txt_mem = self.get_network(self_type='txt_mem', layers=args.layers, num_mix=3)
+            self.trans_cxr_mem = self.get_network(self_type='cxr_mem', layers=args.layers, num_mix=3)
+            self.trans_ecg_mem = self.get_network(self_type='ecg_mem', layers=args.layers, num_mix=3)
 
             if self.cross_method=="MulT":
+                # self.trans_txt_with_ts=self.get_network(self_type='txt_with_ts',layers=args.cross_layers)
+                # self.trans_ts_with_txt=self.get_network(self_type='ts_with_txt',layers=args.cross_layers)
+                # self.proj1 = nn.Linear((self.d_ts+self.d_txt), (self.d_ts+self.d_txt))
+                # self.proj2 = nn.Linear((self.d_ts+self.d_txt), (self.d_ts+self.d_txt))
+                # self.out_layer = nn.Linear((self.d_ts+self.d_txt), output_dim)
+
                 self.trans_txt_with_ts=self.get_network(self_type='txt_with_ts',layers=args.cross_layers)
+                self.trans_txt_with_cxr=self.get_network(self_type='txt_with_cxr',layers=args.cross_layers)
+                self.trans_txt_with_ecg=self.get_network(self_type='txt_with_ecg',layers=args.cross_layers)
                 self.trans_ts_with_txt=self.get_network(self_type='ts_with_txt',layers=args.cross_layers)
-                self.proj1 = nn.Linear((self.d_ts+self.d_txt), (self.d_ts+self.d_txt))
-                self.proj2 = nn.Linear((self.d_ts+self.d_txt), (self.d_ts+self.d_txt))
-                self.out_layer = nn.Linear((self.d_ts+self.d_txt), output_dim)
+                self.trans_ts_with_cxr=self.get_network(self_type='ts_with_cxr',layers=args.cross_layers)
+                self.trans_ts_with_ecg=self.get_network(self_type='ts_with_ecg',layers=args.cross_layers)
+                self.trans_cxr_with_txt=self.get_network(self_type='cxr_with_txt',layers=args.cross_layers)
+                self.trans_cxr_with_ts=self.get_network(self_type='cxr_with_ts',layers=args.cross_layers)
+                self.trans_cxr_with_ecg=self.get_network(self_type='cxr_with_ecg',layers=args.cross_layers)
+                self.trans_ecgs_with_txt=self.get_network(self_type='ecg_with_txt',layers=args.cross_layers)
+                self.trans_ecgs_with_ts=self.get_network(self_type='ecg_with_ts',layers=args.cross_layers)
+                self.trans_ecgs_with_cxr=self.get_network(self_type='ecg_with_cxr',layers=args.cross_layers)
+
+                self.proj1 = nn.Linear((self.d_ts+self.d_txt+self.d_cxr+self.d_ecg)*3, (self.d_ts+self.d_txt+self.d_cxr+self.d_ecg)*3) 
+                self.proj2 = nn.Linear((self.d_ts+self.d_txt+self.d_cxr+self.d_ecg)*3, (self.d_ts+self.d_txt+self.d_cxr+self.d_ecg)*3)
+                self.out_layer = nn.Linear((self.d_ts+self.d_txt+self.d_cxr+self.d_ecg)*3, output_dim)
+
+
             elif self.cross_method=="MAGGate":
                 self.gate_fusion=MAGGate(inp1_size=self.d_txt, inp2_size=self.d_ts, dropout=self.dropout)
                 self.proj1 = nn.Linear(self.d_txt, self.d_txt)
@@ -289,29 +310,90 @@ class MULTCrossModel(nn.Module):
         else:
             raise ValueError("Unknown task")
 
-    def get_network(self, self_type='ts_mem', layers=-1):
+    def get_network(self, self_type='ts_mem', layers=-1, num_mix=1):
+
         if self_type == 'ts_mem':
             if self.irregular_learn_emb_ts:
-                embed_dim, q_seq_len, kv_seq_len = self.d_ts, self.tt_max, None
+                embed_dim, q_seq_len, kv_seq_len = self.d_ts*num_mix, self.tt_max, None
             else:
-                embed_dim, q_seq_len, kv_seq_len = self.d_ts, self.ts_seq_num, None
+                embed_dim, q_seq_len, kv_seq_len = self.d_ts*num_mix, self.ts_seq_num, None
         elif self_type == 'txt_mem':
             if self.irregular_learn_emb_text:
-                embed_dim, q_seq_len, kv_seq_len = self.d_txt, self.tt_max, None
+                embed_dim, q_seq_len, kv_seq_len = self.d_txt*num_mix, self.tt_max, None
             else:
-                embed_dim, q_seq_len, kv_seq_len = self.d_txt, self.text_seq_num, None
-
+                embed_dim, q_seq_len, kv_seq_len = self.d_txt*num_mix, self.text_seq_num, None
+        elif self_type == 'cxr_mem':
+            if self.irregular_learn_emb_cxr:
+                embed_dim, q_seq_len, kv_seq_len = self.d_cxr*num_mix, self.tt_max, None
+            else:
+                embed_dim, q_seq_len, kv_seq_len = self.d_cxr*num_mix, self.cxr_seq_num, None
+        elif self_type == 'ecg_mem':
+            if self.irregular_learn_emb_ecg:
+                embed_dim, q_seq_len, kv_seq_len = self.d_ecg*num_mix, self.tt_max, None
+            else:
+                embed_dim, q_seq_len, kv_seq_len = self.d_ecg*num_mix, self.ecg_seq_num, None
         elif self_type =='txt_with_ts':
             if self.irregular_learn_emb_ts:
                 embed_dim, q_seq_len,kv_seq_len = self.d_ts, self.tt_max, self.tt_max
             else:
                 embed_dim, q_seq_len,kv_seq_len = self.d_ts, self.text_seq_num, self.ts_seq_num
-
+        elif self_type =='txt_with_cxr':
+            if self.irregular_learn_emb_cxr:
+                embed_dim, q_seq_len,kv_seq_len = self.d_cxr, self.tt_max, self.tt_max
+            else:
+                embed_dim, q_seq_len,kv_seq_len = self.d_cxr, self.text_seq_num, self.cxr_seq_num
+        elif self_type =='txt_with_ecg':
+            if self.irregular_learn_emb_ecg:
+                embed_dim, q_seq_len,kv_seq_len = self.d_ecg, self.tt_max, self.tt_max
+            else:
+                embed_dim, q_seq_len,kv_seq_len = self.d_ecg, self.text_seq_num, self.ecg_seq_num
         elif self_type =='ts_with_txt':
             if self.irregular_learn_emb_text:
                 embed_dim, q_seq_len,kv_seq_len = self.d_txt, self.tt_max, self.tt_max
             else:
                 embed_dim, q_seq_len,kv_seq_len = self.d_txt, self.ts_seq_num, self.text_seq_num
+        elif self_type =='ts_with_cxr':
+            if self.irregular_learn_emb_cxr:
+                embed_dim, q_seq_len,kv_seq_len = self.d_cxr, self.tt_max, self.tt_max
+            else:
+                embed_dim, q_seq_len,kv_seq_len = self.d_cxr, self.ts_seq_num, self.cxr_seq_num
+        elif self_type =='ts_with_ecg':
+            if self.irregular_learn_emb_ecg:
+                embed_dim, q_seq_len,kv_seq_len = self.d_ecg, self.tt_max, self.tt_max
+            else:
+                embed_dim, q_seq_len,kv_seq_len = self.d_ecg, self.ts_seq_num, self.ecg_seq_num
+        elif self_type =='cxr_with_ts':
+            if self.irregular_learn_emb_ts:
+                embed_dim, q_seq_len,kv_seq_len = self.d_ts, self.tt_max, self.tt_max
+            else:
+                embed_dim, q_seq_len,kv_seq_len = self.d_ts, self.cxr_seq_num, self.ts_seq_num
+        elif self_type =='cxr_with_txt':
+            if self.irregular_learn_emb_text:
+                embed_dim, q_seq_len,kv_seq_len = self.d_txt, self.tt_max, self.tt_max
+            else:
+                embed_dim, q_seq_len,kv_seq_len = self.d_txt, self.cxr_seq_num, self.text_seq_num
+        elif self_type =='cxr_with_ecg':
+            if self.irregular_learn_emb_ecg:
+                embed_dim, q_seq_len,kv_seq_len = self.d_ecg, self.tt_max, self.tt_max
+            else:
+                embed_dim, q_seq_len,kv_seq_len = self.d_ecg, self.cxr_seq_num, self.ecg_seq_num
+        elif self_type =='ecg_with_ts':
+            if self.irregular_learn_emb_ts:
+                embed_dim, q_seq_len,kv_seq_len = self.d_ts, self.tt_max, self.tt_max
+            else:
+                embed_dim, q_seq_len,kv_seq_len = self.d_ts, self.ecg_seq_num, self.ts_seq_num
+        elif self_type =='ecg_with_txt':
+            if self.irregular_learn_emb_text:
+                embed_dim, q_seq_len,kv_seq_len = self.d_txt, self.tt_max, self.tt_max
+            else:
+                embed_dim, q_seq_len,kv_seq_len = self.d_txt, self.ecg_seq_num, self.text_seq_num
+        elif self_type =='ecg_with_cxr':
+            if self.irregular_learn_emb_cxr:
+                embed_dim, q_seq_len,kv_seq_len = self.d_cxr, self.tt_max, self.tt_max
+            else:
+                embed_dim, q_seq_len,kv_seq_len = self.d_cxr, self.ecg_seq_num, self.cxr_seq_num
+
+        
         else:
             raise ValueError("Unknown network type")
 
@@ -509,22 +591,50 @@ class MULTCrossModel(nn.Module):
             if hiddens is None:
                 return None
             # h_txt_with_ts, h_ts_with_txt=hiddens
-            last_hs = torch.cat([hid[-1] for hid in hiddens], dim=1)
+            hidden_states, routing_log = hiddens
+            last_hs = torch.cat([hid[-1] for hid in hidden_states], dim=1)
             # last_hs = torch.cat([h_txt_with_ts[-1], h_ts_with_txt[-1]], dim=1)
         else:
             if 'CXR' in self.modeltype:
                 proj_x_txt = proj_x_cxr
             if self.cross_method=="MulT":
-                # ts --> txt
-                h_txt_with_ts = self.trans_txt_with_ts(proj_x_txt, proj_x_ts, proj_x_ts)
-                # txt --> ts
-                h_ts_with_txt = self.trans_ts_with_txt(proj_x_ts, proj_x_txt, proj_x_txt)
-                proj_x_ts = self.trans_ts_mem(h_txt_with_ts)
-                proj_x_txt = self.trans_txt_mem(h_ts_with_txt)
+                # # ts --> txt
+                # h_txt_with_ts = self.trans_txt_with_ts(proj_x_txt, proj_x_ts, proj_x_ts)
+                # # txt --> ts
+                # h_ts_with_txt = self.trans_ts_with_txt(proj_x_ts, proj_x_txt, proj_x_txt)
 
-                last_h_ts=proj_x_ts[-1]
-                last_h_txt=proj_x_txt[-1]
-                last_hs = torch.cat([last_h_ts,last_h_txt], dim=1)
+                h_txt_with_ts = self.trans_txt_with_ts(proj_x_txt, proj_x_ts, proj_x_ts)
+                h_txt_with_cxr = self.trans_txt_with_cxr(proj_x_txt, proj_x_cxr, proj_x_cxr)
+                h_txt_with_ecg = self.trans_txt_with_ecg(proj_x_txt, proj_x_ecg, proj_x_ecg)
+                h_ts_with_txt = self.trans_ts_with_txt(proj_x_ts, proj_x_txt, proj_x_txt)
+                h_ts_with_cxr = self.trans_ts_with_cxr(proj_x_ts, proj_x_cxr, proj_x_cxr)
+                h_ts_with_ecg = self.trans_ts_with_ecg(proj_x_ts, proj_x_ecg, proj_x_ecg)
+                h_cxr_with_txt = self.trans_cxr_with_txt(proj_x_cxr, proj_x_txt, proj_x_txt)
+                h_cxr_with_ts = self.trans_cxr_with_ts(proj_x_cxr, proj_x_ts, proj_x_ts)
+                h_cxr_with_ecg = self.trans_cxr_with_ecg(proj_x_cxr, proj_x_ecg, proj_x_ecg)
+                h_ecg_with_txt = self.trans_ecgs_with_txt(proj_x_ecg, proj_x_txt, proj_x_txt)
+                h_ecg_with_ts = self.trans_ecgs_with_ts(proj_x_ecg, proj_x_ts, proj_x_ts)
+                h_ecg_with_cxr = self.trans_ecgs_with_cxr(proj_x_ecg, proj_x_cxr, proj_x_cxr)
+
+                h_txt = torch.cat([h_txt_with_ts, h_txt_with_cxr, h_txt_with_ecg], dim=2)
+                h_ts = torch.cat([h_ts_with_txt, h_ts_with_cxr, h_ts_with_ecg], dim=2)
+                h_cxr = torch.cat([h_cxr_with_txt, h_cxr_with_ts, h_cxr_with_ecg], dim=2)
+                h_ecg = torch.cat([h_ecg_with_txt, h_ecg_with_ts, h_ecg_with_cxr], dim=2)
+
+                proj_x_ts = self.trans_ts_mem(h_ts)
+                proj_x_txt = self.trans_txt_mem(h_txt)
+                proj_x_cxr = self.trans_cxr_mem(h_cxr)
+                proj_x_ecg = self.trans_ecg_mem(h_ecg)
+
+                last_hs = torch.cat([proj_x_txt[-1], proj_x_ts[-1], proj_x_cxr[-1], proj_x_ecg[-1]], dim=1)
+
+                
+                # proj_x_ts = self.trans_ts_mem(h_txt_with_ts)
+                # proj_x_txt = self.trans_txt_mem(h_ts_with_txt)
+
+                # last_h_ts=proj_x_ts[-1]
+                # last_h_txt=proj_x_txt[-1]
+                # last_hs = torch.cat([last_h_ts,last_h_txt], dim=1)
 
             else:
                 proj_x_ts = self.trans_ts_mem(proj_x_ts)

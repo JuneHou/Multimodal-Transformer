@@ -133,6 +133,8 @@ def main():
     model, optimizer, train_dataloader,val_dataloader,test_data_loader = \
     accelerator.prepare(model, optimizer, train_dataloader,val_dataloader,test_data_loader)
 
+    start_time = time.time()
+
     trainer_irg(model=model,args=args,accelerator=accelerator,train_dataloader=train_dataloader,\
         dev_dataloader=val_dataloader, test_data_loader=test_data_loader, 
         tokenizer=tokenizer, device=device,\
@@ -143,6 +145,14 @@ def main():
     eval_test(args,model,train_dataloader, device, mode='train')
     eval_test(args,model,val_dataloader, device, mode='val')
     print(f"New maximum memory allocated on GPU: {torch.cuda.max_memory_allocated(device)} bytes")
+    end_time = time.time()
+    elapsed = end_time - start_time
+
+    hours = int(elapsed // 3600)
+    minutes = int((elapsed % 3600) // 60)
+    seconds = elapsed % 60
+
+    print(f"Total training time: {hours:02d}:{minutes:02d}:{seconds:05.2f} (hh:mm:ss)")
     print(f'Results saved in:\n{args.ck_file_path}')
 
     # attention_weights = model.aggregate_attention_weights()

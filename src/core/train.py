@@ -16,7 +16,7 @@ def eval_test(args, model, dataloader, device, mode=None):
     os.makedirs(rootdir, exist_ok=True)
 
     # Load the result dictionary if exists
-    result_dict_path = os.path.join(rootdir, "result.pkl")
+    result_dict_path = os.path.join(rootdir, f"{args.seed}result.pkl")
     try:
         result_dict = pickle.load(open(result_dict_path, "rb"))
     except FileNotFoundError:

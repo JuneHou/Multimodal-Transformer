@@ -332,8 +332,8 @@ class MoE(nn.Module):
                 embeddings = x
             all_logits = self._get_logits(embeddings, train, noise_epsilon)
             logits, clean_logits, noisy_logits, noise_stddev = all_logits[0], all_logits[1], all_logits[2], all_logits[3]
-            gates, load = self._top_k_gating(logits, clean_logits, noisy_logits, noise_stddev, self.k)
-            return gates, load
+            gates, load, top_k_indices = self._top_k_gating(logits, clean_logits, noisy_logits, noise_stddev, self.k)
+            return gates, load, top_k_indices
         else:
             all_gates, all_loads, all_indices = [], [], []
             for i in range(self.num_modalities):

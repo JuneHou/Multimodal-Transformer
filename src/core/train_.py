@@ -27,7 +27,7 @@ def eval_test(args, model, dataloader, device, mode=None):
     result_dict[seed] = {}
 
     # Load the best model checkpoint for evaluation
-    best_model_file = os.path.join(rootdir, f"42.pth.tar")
+    best_model_file = os.path.join(rootdir, f"{args.seed}.pth.tar")
     checkpoint = None
     if best_model_file:
         print("Loading best model from:", best_model_file)
@@ -145,8 +145,8 @@ def trainer_irg(model,args,accelerator,train_dataloader,dev_dataloader,test_data
     best_evals={}
     weights_updated = False
     last_f1 = None
-    decay_rate = 0.05
-    smooth_factor = 0.5
+    decay_rate = 0.1
+    smooth_factor = 0.7
 
     # Check if the file already exists and load previous gradients
     output_file_base = '/data/wang/junh/githubs/Multimodal-Transformer/' + args.modeltype
@@ -290,7 +290,7 @@ def evaluate_irg(args, device, data_loader, model, mode=None):
             label = batch['labels']
             ids = batch['ids']
 
-            proj, routing_log, probs = model(**input_fields)
+            proj, probs = model(**input_fields)
 
             if probs is None:
                 warnings.warn("probs is None!")
@@ -307,13 +307,13 @@ def evaluate_irg(args, device, data_loader, model, mode=None):
             eval_labels += label.tolist()
             eval_ids += ids
 
-            for log_entry in routing_log:
-                layer_id, modality, indices = log_entry
-                eval_routing_log.append({
-                    "layer_id": layer_id,
-                    "modality": modality,
-                    "indices": indices  # Assuming indices is a list that doesn't need further unpacking
-                })
+            # for log_entry in routing_log:
+            #     layer_id, modality, indices = log_entry
+            #     eval_routing_log.append({
+            #         "layer_id": layer_id,
+            #         "modality": modality,
+            #         "indices": indices  # Assuming indices is a list that doesn't need further unpacking
+            #     })
         # Optional: Aggregate attention weights post-evaluation of the batch
         # Can also be done only at the end of an epoch or the complete evaluation
         # attention_weights = model.aggregate_attention_weights()

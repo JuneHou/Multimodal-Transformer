@@ -14,73 +14,59 @@ max_notes = 5
 max_len = 128
 
 def calc_avg_cxr_embedding(stays_list):
-    # sample_cxr_feats = stays_list[0]['cxr_feats'][0]
     feature_names = ['dn_' + str(i) for i in range(1024)]
-
-    # Create dataframe
     df = pd.DataFrame(columns=feature_names)
 
     for stay in tqdm(stays_list, total=len(stays_list), desc='Calculating CXR Embeddings'):
-        if len(stay['cxr_feats']) == 0:
+        cxr_feats = stay.get('cxr_feats', None)
+        if cxr_feats is None or len(cxr_feats) == 0:
             curr_emb = np.zeros((1, len(feature_names)))
         else:
-            curr_emb = np.array(stay['cxr_feats'])
+            curr_emb = np.array(cxr_feats)
         curr_emb = curr_emb[max_notes:]
+        curr_emb = np.nan_to_num(curr_emb, nan=0.0, posinf=0.0, neginf=0.0)
         curr_avg_embeddings = np.mean(curr_emb, axis=0)
-        # curr_avg_embeddings = curr_emb[0]
         curr_df = pd.DataFrame(curr_avg_embeddings.reshape(1, -1), columns=feature_names)
         df = pd.concat([df, curr_df], axis=0, ignore_index=True)
     
     return df
 
 def calc_avg_ecg_embedding(stays_list):
-    # sample_feats = stays_list[0]['ecg_feats'][0]
     feature_names = ['ecg_' + str(i) for i in range(256)]
-
-    # Create dataframe
     df = pd.DataFrame(columns=feature_names)
 
     for stay in tqdm(stays_list, total=len(stays_list), desc='Calculating ECG Embeddings'):
-        if len(stay['ecg_feats']) == 0:
+        ecg_feats = stay.get('ecg_feats', None)
+        if ecg_feats is None or len(ecg_feats) == 0:
             curr_emb = np.zeros((1, len(feature_names)))
         else:
-            curr_emb = np.array(stay['ecg_feats'])
-        # If any entries have NaNs, replace with 0
-        curr_emb[np.isnan(curr_emb)] = 0
-
-        # If any entries have inf, replace with 0
-        curr_emb[np.isinf(curr_emb)] = 0
-
-        curr_emb[curr_emb > 1e6] = 0
+            curr_emb = np.array(ecg_feats)
         curr_emb = curr_emb[max_notes:]
+        curr_emb = np.nan_to_num(curr_emb, nan=0.0, posinf=0.0, neginf=0.0)
+        curr_emb[curr_emb > 1e6] = 0
         curr_avg_embeddings = np.mean(curr_emb, axis=0)
-        # curr_avg_embeddings = curr_emb[0]
         curr_df = pd.DataFrame(curr_avg_embeddings.reshape(1, -1), columns=feature_names)
         df = pd.concat([df, curr_df], axis=0, ignore_index=True)
     
     return df
 
 def calc_avg_text_embedding(stays_list):
-    # sample_feats = stays_list[0]['text_embeddings'][0]
     feature_names = ['te_' + str(i) for i in range(768)]
-
-    # Create dataframe
     df = pd.DataFrame(columns=feature_names)
 
     for stay in tqdm(stays_list, total=len(stays_list), desc='Calculating Text Embeddings'):
-        if len(stay['text_embeddings']) == 0:
+        text_embeddings = stay.get('text_embeddings', None)
+        if text_embeddings is None or len(text_embeddings) == 0:
             curr_emb = np.zeros((1, len(feature_names)))
         else:
-            curr_emb = np.array(stay['text_embeddings'])
-
-        # curr_avg_embeddings = curr_emb[0]
+            curr_emb = np.array(text_embeddings)
         curr_emb = curr_emb[max_notes:]
+        curr_emb = np.nan_to_num(curr_emb, nan=0.0, posinf=0.0, neginf=0.0)
         curr_avg_embeddings = np.mean(curr_emb, axis=0)
         curr_df = pd.DataFrame(curr_avg_embeddings.reshape(1, -1), columns=feature_names)
         df = pd.concat([df, curr_df], axis=0, ignore_index=True)
     
     return df
-
 def calc_ts_embeddings(stays_list):
     event_list = ['Absolute Neutrophil Count', 'Alkaline Phosphate', 'Anion gap',
         'Bicarbonate', 'Calcium', 'Chloride', 'Creatinine', 'Diastolic BP',
