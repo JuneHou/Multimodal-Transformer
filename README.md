@@ -56,10 +56,6 @@ python load_result.py
 This repository extends the Fuse-MoE framework. Data preprocessing strictly follows the Fuse-MoE procedure and codebase:
 - [FuseMoE: Mixture-of-Experts Transformers for Fleximodal Fusion](https://arxiv.org/pdf/2402.03226.pdf), Han et al., 2024
 
-Additional inspiration and code are based on:
-- [Improving Medical Predictions by Irregular Multimodal Electronic Health Records Modeling](https://arxiv.org/pdf/2210.12156.pdf), ICML'23
-- [Integrated multimodal artificial intelligence framework for healthcare applications](https://arxiv.org/pdf/2202.12998.pdf), NPJ Digital Medicine
-
 ## Citation
 
 If you use this code, please cite our paper:
