@@ -65,10 +65,12 @@ Additional inspiration and code are based on:
 If you use this code, please cite our paper:
 
 ```
-@article{your2025btw,
-  title={BTW: A Non-Parametric Variance Stabilization Framework for Multimodal Model Integration},
-  author={Your Name and others},
-  journal={...},
-  year={2025}
+@inproceedings{
+hou2025btw,
+title={{BTW}: A Non-Parametric Variance Stabilization Framework for Multimodal Model Integration},
+author={Jun Hou and Le Wang and Xuan Wang},
+booktitle={The 2025 Conference on Empirical Methods in Natural Language Processing},
+year={2025},
+url={https://openreview.net/forum?id=EXp1qDqhCk}
 }
 ```
