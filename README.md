@@ -1,32 +1,43 @@
-# Mixture-of-Experts for Multimodal Fusion
 
-This repository contains implementation from the paper: [FuseMoE: Mixture-of-Experts Transformers for Fleximodal Fusion](https://arxiv.org/pdf/2402.03226.pdf).
+# Multimodal-Transformer: Fuse-MoE Replication on MIMIC-IV
+
+
+This repository provides the official implementation for replicating the Fuse-MoE framework on the multimodal MIMIC-IV dataset, including our extensions for the BTW model.
 
 ## Set Up Environment
 
 Run the following commands to create a conda environment:
 ```bash
-conda create -n MulEHR python=3.8
-source activate MulEHR
+conda create -n multimodal-transformer python=3.8
+source activate multimodal-transformer
 pip install -r requirements.txt
+conda activate multimodal-transformer
 ```
 
 ## Repository Structure
 
 - `src/`: Source code
-    - `preprocessing/`: Scripts for MIMIC-III and MIMIC-IV data preprocessing
-    - `core/`: Core implementation for the MoE and irregularity/modality encoder module
-    - `scripts/`: Scripts to run experiments in different settings
-    - `utils/`: Hyper-parameters, I/O, utility functions
+## Fuse-MoE Replication on MIMIC-IV and BTW Extensions
+
+- **Fuse-MoE**: A Mixture-of-Experts approach for multimodal clinical data.
+- **Dataset**: MIMIC-IV (multimodal: Text, TS (tabular), CXR (imaging), ECG (signal).)
+- **Preprocessing**: Follows the Fuse-MoE procedure (see below).
+
+### Key Files for BTW Model
+
+- `src/core/model_btw.py`: BTW model implementation.
+- `src/scripts/main_mimiciv_btw.py`: Main script for running BTW on MIMIC-IV.
+- `src/scripts/run_mimiciv_btw.sh`: Shell script to launch experiments.
+- `src/core/train_btw.py`: Training logic for BTW.
+- `src/preprocessing/data_mimiciv_btw.py`: Data preprocessing for MIMIC-IV (Fuse-MoE style).
+
+### Data Preprocessing
+
+- Data preprocessing follows the Fuse-MoE pipeline [https://github.com/aaronhan223/FuseMoE].
 
 ## Run Experiments
 
 Under `src/scripts/`:
-
-MIMIC-III experiments
-```
-sh run.sh
-```
 
 MIMIC-IV experiments
 ```
@@ -39,19 +50,25 @@ First change the `filepath` in `load_result.py`, then run
 python load_result.py
 ```
 
+
 ## Acknowledgement
 
-Part of our implementations are based on the following papers:
+This repository extends the Fuse-MoE framework. Data preprocessing strictly follows the Fuse-MoE procedure and codebase:
+- [FuseMoE: Mixture-of-Experts Transformers for Fleximodal Fusion](https://arxiv.org/pdf/2402.03226.pdf), Han et al., 2024
+
+Additional inspiration and code are based on:
 - [Improving Medical Predictions by Irregular Multimodal Electronic Health Records Modeling](https://arxiv.org/pdf/2210.12156.pdf), ICML'23
 - [Integrated multimodal artificial intelligence framework for healthcare applications](https://arxiv.org/pdf/2202.12998.pdf), NPJ Digital Medicine
 
 ## Citation
 
+If you use this code, please cite our paper:
+
 ```
-@article{han2024fusemoe,
-  title={FuseMoE: Mixture-of-Experts Transformers for Fleximodal Fusion},
-  author={Han, Xing and Nguyen, Huy and Harris, Carl and Ho, Nhat and Saria, Suchi},
-  journal={arXiv preprint arXiv:2402.03226},
-  year={2024}
+@article{your2025btw,
+  title={BTW: A Non-Parametric Variance Stabilization Framework for Multimodal Model Integration},
+  author={Your Name and others},
+  journal={...},
+  year={2025}
 }
 ```
